@@ -7,3 +7,8 @@ edition = "2018"
 [dependencies]
 log = "0.4"
 app_dirs = { package = "app_dirs2", version = "2" }
+
+[build-dependencies]
+git = { package = "git2", version= "0.13.17"}
+regex = "1"
+chrono = "0.4"
