@@ -1,6 +1,6 @@
+pub use log::{debug, error, info, warn};
 use log::{Level, Metadata, Record};
-use log::{SetLoggerError, LevelFilter};
-pub use log::{debug, info, warn, error};
+pub use log::{LevelFilter, SetLoggerError};
 
 struct TerminalLogger;
 
@@ -18,7 +18,6 @@ impl log::Log for TerminalLogger {
 
 static LOGGER: TerminalLogger = TerminalLogger;
 
-pub fn init_logging() -> Result<(), SetLoggerError> {
-    log::set_logger(&LOGGER)
-        .map(|()| log::set_max_level(LevelFilter::Debug))
+pub fn init_logging(max_log_level: LevelFilter) -> Result<(), SetLoggerError> {
+    log::set_logger(&LOGGER).map(|()| log::set_max_level(max_log_level))
 }

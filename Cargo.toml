@@ -5,10 +5,14 @@ authors = ["Sven Rademakers <sven.rademakers@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-log = "0.4"
-app_dirs = { package = "app_dirs2", version = "2" }
+log = "*"
+app_dirs = { package = "app_dirs2", version = "*" }
+pyo3 = "*"
+json = "*"
+lazy_static = "*"
+notify = "*"
 
 [build-dependencies]
-git = { package = "git2", version= "0.13.17"}
-regex = "1"
-chrono = "0.4"
+git = { package = "git2", version= "*"}
+regex = "*"
+chrono = "*"
