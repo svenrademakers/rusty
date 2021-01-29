@@ -7,6 +7,9 @@ use std::sync::mpsc::channel;
 use std::time::Duration;
 mod app_meta;
 mod logging;
+mod script_engine;
+use script_engine::ScriptManager;
+
 mod settings;
 
 use app_meta::*;
@@ -42,13 +45,15 @@ fn main() {
     info!("Version:\t{} ({})", VERSION, BUILD_DATE);
     info!("--------------------------------------");
 
-    let app_settings: settings::Settings = settings::Settings::new();
+    // let app_settings: settings::Settings = settings::Settings::new();
 
-    if let Some(path) = app_settings.scripts_path() {
-        info!("Start watcher: {}", &path);
-        let path_clone = path.clone();
-        std::thread::spawn(move || start_script_watcher(path_clone));
-    }
+    // if let Some(path) = app_settings.scripts_path() {
+    //     info!("Start watcher: {}", &path);
+    //     let path_clone = path.clone();
+    //     std::thread::spawn(move || start_script_watcher(path_clone));
+    // }
 
-    loop {}
+    // loop {}
+
+    let manager = ScriptManager::new();
 }

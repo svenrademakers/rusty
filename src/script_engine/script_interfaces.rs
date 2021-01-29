@@ -1,34 +1,34 @@
-mod script_engine
-{
+use std::boxed::Box;
+use std::vec::Vec;
 
-Enum ScriptArguments {
+enum ScriptArguments {
   Boolean,
   Int,
   Uint,
   Float,
   Text,
-  List(vec::Vec<ScriptArguments>)
+  List(Box<Vec<ScriptArguments>>),
 }
 
-#[derive(PartialEq, Clone, Copy, Hash, Debug)]
+#[derive(PartialEq, Clone, Hash, Debug)]
 struct Script {
-  name : String,
+  name: String,
   description: String,
-  handle : i32,
-  arguments : vec::Vec<ScriptArguments>,
-  argument_descriptions : vec::Vec<String>,
+  handle: i32,
+  arguments: Vec<ScriptArguments>,
+  argument_descriptions: Vec<String>,
 }
 
-pub trait GetScripts {
-  fn load(&self) -> bool;
-  fn get_scripts(&self) -> &[_];
+pub trait Parse {
+  fn parse(&self) -> bool;
 }
 
-pub struct ScriptLoader<T : GetScripts> {
-  pub scripts : vec::Vec<box::Box<Script>>,
+pub struct ScriptLoader {
+  pub scripts: Vec<Box<Script>>,
 }
 
-impl<T> ScriptLoader<T> {
-
-}
+impl ScriptLoader {
+  pub fn get_scripts(&self) -> &[Box<Script>] {
+    self.scripts
+  }
 }
