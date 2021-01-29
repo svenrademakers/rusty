@@ -3,13 +3,15 @@ mod script_engine
 
 Enum ScriptArguments {
   Boolean,
-  Integer,
+  Int,
+  Uint,
   Float,
   Text,
   List(vec::Vec<ScriptArguments>)
 }
 
-Struct Script {
+#[derive(PartialEq, Clone, Copy, Hash, Debug)]
+struct Script {
   name : String,
   description: String,
   handle : i32,
@@ -17,9 +19,16 @@ Struct Script {
   argument_descriptions : vec::Vec<String>,
 }
 
-pub trait ScriptFileLoader {
+pub trait GetScripts {
   fn load(&self) -> bool;
-  fn get_scripts(&self) -> vec::Vec<Script>;
+  fn get_scripts(&self) -> &[_];
 }
 
+pub struct ScriptLoader<T : GetScripts> {
+  pub scripts : vec::Vec<box::Box<Script>>,
+}
+
+impl<T> ScriptLoader<T> {
+
+}
 }

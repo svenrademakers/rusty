@@ -39,7 +39,7 @@ pub struct Settings {
 }
 
 impl Settings {
-    pub fn new() -> Self {
+    const pub fn new() -> Self {
         let mut set = Settings {
             settings: load_defaults(),
         };
@@ -48,7 +48,7 @@ impl Settings {
         set
     }
 
-    fn load_setting_overrides(&mut self) {
+    const fn load_setting_overrides(&mut self) {
         if !std::path::Path::new(CONF_FILENAME.as_str()).exists() {
             info!("app config {}, not found", CONF_FILENAME.as_str());
             return;
