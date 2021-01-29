@@ -19,16 +19,10 @@ struct Script {
   argument_descriptions: Vec<String>,
 }
 
-pub trait Parse {
+pub trait ScriptLoader {
+  scripts: Vec<Box<Script>>;
   fn parse(&self) -> bool;
-}
-
-pub struct ScriptLoader {
-  pub scripts: Vec<Box<Script>>,
-}
-
-impl ScriptLoader {
-  pub fn get_scripts(&self) -> &[Box<Script>] {
+  fn get_scripts(&self) -> &[Box<Script>] {
     self.scripts
   }
 }

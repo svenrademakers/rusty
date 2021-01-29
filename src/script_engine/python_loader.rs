@@ -1,10 +1,10 @@
-mod script_interfaces;
+mod script_engine::script_interfaces;
 
 struct PythonLoader {}
 
 impl script_interfaces::ScriptLoader for PythonLoader {}
 
-impl Parse for PythonLoader {
+impl ScriptLoader for PythonLoader {
     fn parse(&self) -> bool {
         scripts.insert(Script {
             name: "test_script".to_string(),
