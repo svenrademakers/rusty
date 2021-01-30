@@ -1,41 +1,58 @@
 #[macro_use]
 extern crate lazy_static;
 extern crate notify;
-
-use notify::{watcher, RecursiveMode, Watcher};
-use std::sync::mpsc::channel;
-use std::time::Duration;
 mod app_meta;
+mod filewatcher;
 mod logging;
 mod script_engine;
-use script_engine::ScriptManager;
-
 mod settings;
+
+use json::JsonValue;
+use settings::KeyWithDefault;
+use settings::Settings;
+
+use std::hash::Hash;
+use std::path::PathBuf;
 
 use app_meta::*;
 use logging::*;
 
-fn start_script_watcher(watch_dir: String) {
-    let dir = std::path::Path::new(&watch_dir);
-    if !dir.exists() {
-        std::fs::create_dir(dir).unwrap();
-    }
+lazy_static! {
+    static ref APP_CONFIG: PathBuf =
+        app_dirs::get_app_root(app_dirs::AppDataType::UserConfig, &app_meta::APP_INFO).unwrap();
+    static ref CONF_FILENAME: String = {
+        let mut config = APP_CONFIG.clone();
+        config.push("config.json");
+        config.to_string_lossy().to_string()
+    };
+}
 
-    let (tx, rx) = channel();
-    // Create a watcher object, delivering debounced events.
-    // The notification back-end is selected based on the platform.
-    let mut watcher = watcher(tx, Duration::from_secs(3)).unwrap();
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub enum SettingKey {
+    ScriptsDir,
+    FolderScan,
+}
 
-    // Add a path to be watched. All files and directories at that path and
-    // below will be monitored for changes.
-    watcher.watch(watch_dir, RecursiveMode::Recursive).unwrap();
+fn setting_defaults() -> Vec<KeyWithDefault<SettingKey>> {
+    let mut dict: Vec<KeyWithDefault<SettingKey>> = Vec::new();
 
-    loop {
-        match rx.recv() {
-            Ok(event) => println!("{:?}", event),
-            Err(e) => println!("watch error: {:?}", e),
-        }
-    }
+    // default scripts dir
+    let mut scripts_dir = std::env::current_dir().unwrap_or_default();
+    scripts_dir.push("scripts");
+    dict.push((
+        SettingKey::ScriptsDir,
+        "scripts_dir",
+        JsonValue::String(scripts_dir.to_string_lossy().to_string()),
+    ));
+
+    // default folder scan
+    dict.push((
+        SettingKey::FolderScan,
+        "folder_scan",
+        JsonValue::Boolean(true),
+    ));
+
+    dict
 }
 
 fn main() {
@@ -45,15 +62,19 @@ fn main() {
     info!("Version:\t{} ({})", VERSION, BUILD_DATE);
     info!("--------------------------------------");
 
-    // let app_settings: settings::Settings = settings::Settings::new();
+    let app_settings: Settings<SettingKey> = Settings::new(&CONF_FILENAME, &setting_defaults());
 
-    // if let Some(path) = app_settings.scripts_path() {
-    //     info!("Start watcher: {}", &path);
-    //     let path_clone = path.clone();
-    //     std::thread::spawn(move || start_script_watcher(path_clone));
-    // }
+    if let Some(x) = app_settings.get_str(SettingKey::ScriptsDir) {
+        info!("Start watcher: {}", x);
+        let path_clone = x.to_string();
+        std::thread::spawn(move || filewatcher::start_script_watcher(path_clone));
+        // for entry in read_dir(path).unwrap() {
+        //     let entry = entry?;
+        //     if entry.is_file() {}
+        // }
+    }
 
-    // loop {}
+    loop {}
 
-    let manager = ScriptManager::new();
+    //let manager = ScriptManager::new();
 }

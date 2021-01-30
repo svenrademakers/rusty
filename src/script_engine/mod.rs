@@ -1,16 +1,27 @@
-pub mod python_loader;
-pub mod script_interfaces;
+// pub mod python_loader;
+// mod script;
+// use boxed::Box;
+// use vec::Vec;
+// use std::collections::{HashSet, HashMap};
+// use script::Script;
+// use std::path::Path;
 
-pub struct ScriptManager {
-    parsers: std::collections::HashMap,
-}
+// type parse = fn(file : &Path) -> &[Box<Scrip>];
 
-impl ScriptManager {
-    pub fn new() -> Self {
-        ScriptManager {}
-    }
+// pub struct ParserGroup {
+//     parsers: HashMap<String, parse>,
+//     scripts: HashSet<Box<Script>>,
+// }
 
-    fn load() -> bool {
-        false
-    }
-}
+// impl ParserGroup {
+//     pub fn new() -> Self {
+//         let mut sm : ScriptManager {
+//           parsers: HashMap::new(),
+//           scripts: HashSet::new(),
+//         };
+//     }
+
+//     pub fn run() -> bool {
+//         false
+//     }
+// }

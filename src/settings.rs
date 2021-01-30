@@ -1,73 +1,81 @@
 extern crate json;
-use crate::app_meta;
 use crate::logging;
-use logging::{debug, error, info};
 
-const SCRIPTS_DIR_KEY: &str = "script_directory";
+pub use json::JsonValue;
 
-lazy_static! {
-    static ref APP_CONFIG: std::path::PathBuf =
-        app_dirs::get_app_root(app_dirs::AppDataType::UserConfig, &app_meta::APP_INFO).unwrap();
-    static ref CONF_FILENAME: String = {
-        let mut config = APP_CONFIG.clone();
-        config.push("config.json");
-        config.to_string_lossy().to_string()
-    };
+use logging::{error, info, warn};
+use std::cmp::Eq;
+use std::collections::HashMap;
+use std::hash::Hash;
+use std::marker::Copy;
+use std::path::Path;
+use std::path::PathBuf;
+
+use std::vec::Vec;
+
+pub type KeyWithDefault<Key> = (Key, &'static str, JsonValue);
+pub type SettingsReloaded<T> = dyn Fn(&T);
+
+pub struct Settings<'a, Key>
+where
+    Key: Eq + Hash + Copy,
+{
+    settings: HashMap<Key, JsonValue>,
+    mapping: HashMap<&'static str, Key>,
+    observers: Vec<&'a SettingsReloaded<Key>>,
+    settings_file: &'static str,
 }
 
-fn load_defaults() -> std::collections::HashMap<String, String> {
-    let mut dict = std::collections::HashMap::new();
-    dict.insert(
-        SCRIPTS_DIR_KEY.to_owned(),
-        match std::env::current_dir() {
-            Ok(s) => {
-                let mut dir = s;
-                dir.push("scripts");
-                dir.to_string_lossy().to_string()
-            }
-            Err(e) => {
-                error!("{:?}", e);
-                "".to_string()
-            }
-        },
-    );
-    dict
-}
-
-pub struct Settings {
-    settings: std::collections::HashMap<String, String>,
-}
-
-impl Settings {
-    pub fn new() -> Self {
-        let mut set = Settings {
-            settings: load_defaults(),
+impl<'a, Key> Settings<'a, Key>
+where
+    Key: Eq + Hash + Copy,
+{
+    pub fn new(settings_file: &'static str, key_mapping: &[KeyWithDefault<Key>]) -> Self {
+        let mut set = Settings::<Key> {
+            settings: HashMap::new(),
+            mapping: HashMap::new(),
+            observers: Vec::new(),
+            settings_file: settings_file,
         };
+        json::object!();
 
-        set.load_setting_overrides();
+        for (key, json_key, default) in key_mapping {
+            set.settings.insert(*key, default.clone());
+            set.mapping.insert(json_key, *key);
+        }
+        set.from_json();
         set
     }
 
-    fn load_setting_overrides(&mut self) {
-        if !std::path::Path::new(CONF_FILENAME.as_str()).exists() {
-            info!("app config {}, not found", CONF_FILENAME.as_str());
-            return;
-        }
-
-        if let Ok(json) = json::parse(&CONF_FILENAME) {
-            for (key, value) in json.entries() {
-                if let Some(s) = value.as_str() {
-                    self.settings.insert(key.to_string(), s.to_string());
-                } else {
-                    debug!("key:{} val:{:?} not a string", key, value);
-                }
-            }
-        } else {
-            error!("parse error parsing {}", CONF_FILENAME.as_str());
-        }
+    pub fn get(&self, setting: Key) -> Option<&JsonValue> {
+        self.settings.get(&setting)
     }
 
-    pub fn scripts_path(&self) -> Option<&String> {
-        self.settings.get(SCRIPTS_DIR_KEY)
+    pub fn get_str(&self, setting: Key) -> Option<&str> {
+        self.settings.get(&setting).map(|x| x.as_str())?
+    }
+
+    pub fn on_config_reload(&mut self, callback: &'a SettingsReloaded<Key>) {
+        self.observers.push(callback);
+    }
+
+    fn from_json(&mut self) {
+        if let Ok(contents) = std::fs::read_to_string(self.settings_file) {
+            if let Ok(json) = json::parse(contents.as_str()) {
+                for (json_key, json_value) in json.entries() {
+                    if let Some(key) = self.mapping.get(json_key) {
+                        if let Some(val) = self.settings.get_mut(key) {
+                            *val = json_value.clone();
+                        }
+                    } else {
+                        warn!("setting key {:?} not configured", json_key);
+                    }
+                }
+            } else {
+                error!("parse error parsing {}", self.settings_file);
+            }
+        } else {
+            warn!("app config {}, not found", self.settings_file);
+        }
     }
 }
