@@ -9,8 +9,9 @@ log = "*"
 app_dirs = { package = "app_dirs2", version = "*" }
 pyo3 = "*"
 json = "*"
-lazy_static = "*"
 notify = "*"
+clap ="*"
+slotmap="*"
 
 [build-dependencies]
 git = { package = "git2", version= "*"}

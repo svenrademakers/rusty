@@ -3,13 +3,11 @@ use crate::logging;
 
 pub use json::JsonValue;
 
-use logging::{error, info, warn};
+use logging::{error, warn};
 use std::cmp::Eq;
 use std::collections::HashMap;
 use std::hash::Hash;
 use std::marker::Copy;
-use std::path::Path;
-use std::path::PathBuf;
 
 use std::vec::Vec;
 
@@ -23,33 +21,30 @@ where
     settings: HashMap<Key, JsonValue>,
     mapping: HashMap<&'static str, Key>,
     observers: Vec<&'a SettingsReloaded<Key>>,
-    settings_file: &'static str,
 }
 
 impl<'a, Key> Settings<'a, Key>
 where
     Key: Eq + Hash + Copy,
 {
-    pub fn new(settings_file: &'static str, key_mapping: &[KeyWithDefault<Key>]) -> Self {
+    pub fn new(settings_file: &str, key_mapping: &[KeyWithDefault<Key>]) -> Self {
         let mut set = Settings::<Key> {
             settings: HashMap::new(),
             mapping: HashMap::new(),
             observers: Vec::new(),
-            settings_file: settings_file,
         };
-        json::object!();
 
         for (key, json_key, default) in key_mapping {
             set.settings.insert(*key, default.clone());
             set.mapping.insert(json_key, *key);
         }
-        set.from_json();
+        set.from_json(settings_file);
         set
     }
 
-    pub fn get(&self, setting: Key) -> Option<&JsonValue> {
-        self.settings.get(&setting)
-    }
+    // pub fn set_str(&mut self, setting: Key, value: String) {
+    //     self.settings[&setting] = json::JsonValue::String(value);
+    // }
 
     pub fn get_str(&self, setting: Key) -> Option<&str> {
         self.settings.get(&setting).map(|x| x.as_str())?
@@ -59,8 +54,8 @@ where
         self.observers.push(callback);
     }
 
-    fn from_json(&mut self) {
-        if let Ok(contents) = std::fs::read_to_string(self.settings_file) {
+    fn from_json(&mut self, settings_file: &str) {
+        if let Ok(contents) = std::fs::read_to_string(settings_file) {
             if let Ok(json) = json::parse(contents.as_str()) {
                 for (json_key, json_value) in json.entries() {
                     if let Some(key) = self.mapping.get(json_key) {
@@ -72,10 +67,10 @@ where
                     }
                 }
             } else {
-                error!("parse error parsing {}", self.settings_file);
+                error!("parse error parsing {}", settings_file);
             }
         } else {
-            warn!("app config {}, not found", self.settings_file);
+            warn!("app config {}, not found", settings_file);
         }
     }
 }

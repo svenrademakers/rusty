@@ -1,31 +1,15 @@
-#[macro_use]
-extern crate lazy_static;
-extern crate notify;
+mod Settings;
 mod app_meta;
-mod filewatcher;
 mod logging;
 mod script_engine;
-mod settings;
-
-use json::JsonValue;
-use settings::KeyWithDefault;
-use settings::Settings;
-
-use std::hash::Hash;
-use std::path::PathBuf;
 
 use app_meta::*;
 use logging::*;
+use script_engine::*;
+use Settings::*;
 
-lazy_static! {
-    static ref APP_CONFIG: PathBuf =
-        app_dirs::get_app_root(app_dirs::AppDataType::UserConfig, &app_meta::APP_INFO).unwrap();
-    static ref CONF_FILENAME: String = {
-        let mut config = APP_CONFIG.clone();
-        config.push("config.json");
-        config.to_string_lossy().to_string()
-    };
-}
+extern crate clap;
+use clap::{App, Arg};
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum SettingKey {
@@ -62,19 +46,51 @@ fn main() {
     info!("Version:\t{} ({})", VERSION, BUILD_DATE);
     info!("--------------------------------------");
 
-    let app_settings: Settings<SettingKey> = Settings::new(&CONF_FILENAME, &setting_defaults());
+    let user_config_path =
+        app_dirs::get_app_root(app_dirs::AppDataType::UserConfig, &app_meta::APP_INFO)
+            .map(|path| {
+                let mut config = path;
+                config.push("config.json");
+                config.to_string_lossy().to_string()
+            })
+            .unwrap();
 
-    if let Some(x) = app_settings.get_str(SettingKey::ScriptsDir) {
-        info!("Start watcher: {}", x);
-        let path_clone = x.to_string();
-        std::thread::spawn(move || filewatcher::start_script_watcher(path_clone));
-        // for entry in read_dir(path).unwrap() {
-        //     let entry = entry?;
-        //     if entry.is_file() {}
-        // }
+    let settings = Settings::Settings::new(&user_config_path, &setting_defaults());
+    let scripts_path = settings.get_str(SettingKey::ScriptsDir).unwrap();
+
+    let matches = App::new(APP_INFO.name)
+        .version(VERSION)
+        .author(APP_INFO.author)
+        .about(&*format!("run any script def in {}", scripts_path))
+        .arg(
+            Arg::with_name("config")
+                .short("c")
+                .long("config")
+                .value_name("FILE")
+                .help("Sets a custom config file")
+                .takes_value(true),
+        )
+        .arg(
+            Arg::with_name("Script Name")
+                .help("Name of the script to run")
+                .required(true)
+                .index(1),
+        )
+        .arg(
+            Arg::with_name("v")
+                .short("v")
+                .multiple(true)
+                .help("Sets the level of verbosity"),
+        )
+        .get_matches();
+
+    let script_name = matches.value_of("Script Name").unwrap();
+    let mut store = ScriptStore::default();
+    store.load(scripts_path);
+
+    if let Some(key) = store.find(script_name) {
+        if store.call(key, &Vec::new()) {
+            info!("Called {} successfully!", script_name);
+        }
     }
-
-    loop {}
-
-    //let manager = ScriptManager::new();
 }
