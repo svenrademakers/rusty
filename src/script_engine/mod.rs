@@ -68,8 +68,6 @@ impl ScriptEngine {
                     }
                     _ => {}
                 }
-            } else {
-                println!("wat{:?}", entry);
             }
         }
 

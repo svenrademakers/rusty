@@ -88,9 +88,9 @@ fn main() {
     let mut script_engine = ScriptEngine::new();
     script_engine.load(scripts_path);
 
-    // if let Some(key) = script_engine.find(script_name) {
-    //     if script_engine.call(key, &Vec::new()) {
-    //         info!("Called {} successfully!", script_name);
-    //     }
-    // }
+    if let Some(key) = script_engine.find(script_name) {
+        if script_engine.call(key, &Vec::new()) {
+            info!("Called {} successfully!", script_name);
+        }
+    }
 }
