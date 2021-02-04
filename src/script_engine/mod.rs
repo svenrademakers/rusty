@@ -61,7 +61,10 @@ impl ScriptEngine {
             if let Some(x) = entry.extension().and_then(OsStr::to_str) {
                 match x {
                     "py" => {
-                        self.bindings[&InterpreterType::Python].parse(&entry, &mut self.context);
+                        self.bindings
+                            .get_mut(&InterpreterType::Python)
+                            .unwrap()
+                            .parse(&entry, &mut self.context);
                     }
                     _ => {}
                 }
@@ -99,6 +102,6 @@ impl ScriptEngine {
 }
 
 pub trait Interpreter {
-    fn parse(&self, filename: &Path, script_store: &mut ScriptStore);
+    fn parse(&mut self, filename: &Path, script_store: &mut ScriptStore);
     fn call(&self, script_key: ScriptKey, args: &[Argument]) -> bool;
 }

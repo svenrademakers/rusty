@@ -64,7 +64,7 @@ pub fn write_app_meta(rust_file: &str, version_name: &str, build_time_name: &str
     definitions.push((version_name, &*git_version));
 
     let utc: DateTime<Utc> = Utc::now();
-    let time_str = format!("{}-{}-{}", utc.year(), utc.month(), utc.day());
+    let time_str = format!("{}-{}-{}", utc.day(), utc.month(), utc.year());
     definitions.push((build_time_name, &time_str));
 
     update_file(&file, &definitions).unwrap();
