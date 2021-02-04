@@ -38,7 +38,7 @@ where
             set.settings.insert(*key, default.clone());
             set.mapping.insert(json_key, *key);
         }
-        set.from_json(settings_file);
+        set.from_json(&settings_file);
         set
     }
 

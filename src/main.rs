@@ -57,7 +57,7 @@ fn main() {
 
     let settings = Settings::Settings::new(&user_config_path, &setting_defaults());
     let scripts_path = settings.get_str(SettingKey::ScriptsDir).unwrap();
-
+    info!("scripts_path: {}", scripts_path);
     let matches = App::new(APP_INFO.name)
         .version(VERSION)
         .author(APP_INFO.author)
@@ -85,12 +85,12 @@ fn main() {
         .get_matches();
 
     let script_name = matches.value_of("Script Name").unwrap();
-    let mut store = ScriptStore::default();
-    store.load(scripts_path);
+    let mut script_engine = ScriptEngine::new();
+    script_engine.load(scripts_path);
 
-    if let Some(key) = store.find(script_name) {
-        if store.call(key, &Vec::new()) {
-            info!("Called {} successfully!", script_name);
-        }
-    }
+    // if let Some(key) = script_engine.find(script_name) {
+    //     if script_engine.call(key, &Vec::new()) {
+    //         info!("Called {} successfully!", script_name);
+    //     }
+    // }
 }
