@@ -3,6 +3,28 @@ extern crate pyo3;
 use crate::script_engine::*;
 pub use pyo3::{prelude::*, types::PyModule};
 
+#[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
+pub enum InterpreterType {
+    Python,
+}
+
+impl std::fmt::Display for InterpreterType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Python => write!(f, "Python"),
+        }
+    }
+}
+
+pub trait Interpreter {
+    fn parse(
+        &mut self,
+        filename: &Path,
+        script_store: &mut ScriptStore,
+    ) -> Result<(), Box<dyn Error>>;
+    fn call(&self, script_key: ScriptKey, args: &[Argument]) -> Result<bool, Box<dyn Error>>;
+}
+
 pub struct PyInterpreter<'a> {
     callables: SparseSecondaryMap<ScriptKey, &'a PyAny>,
     _gil: GILGuard,
@@ -34,7 +56,7 @@ impl<'a> PyInterpreter<'a> {
 }
 
 impl<'a> Interpreter for PyInterpreter<'a> {
-    fn parse(&mut self, path: &Path, script_store: &mut ScriptStore) {
+    fn parse(&mut self, path: &Path, script_store: &mut ScriptStore) -> Result<(), Box<dyn Error>> {
         if let Ok(contents) = std::fs::read_to_string(path) {
             let filename = path.file_name().and_then(OsStr::to_str).unwrap();
             let module_name = path.file_stem().and_then(OsStr::to_str).unwrap();
@@ -51,17 +73,19 @@ impl<'a> Interpreter for PyInterpreter<'a> {
                     .insert(key, path.to_string_lossy().to_string());
             }
         }
+
+        Ok(())
     }
 
-    fn call(&self, script_key: ScriptKey, _args: &[Argument]) -> bool {
+    fn call(&self, script_key: ScriptKey, _args: &[Argument]) -> Result<bool, Box<dyn Error>> {
         println!("TEST");
         if let Some(x) = self.callables.get(script_key) {
             if let Ok(res) = x.call0() {
                 println!("Called successfully {}", res);
-                return true;
+                return Ok(true);
             }
         }
-        false
+        Ok(false)
     }
 }
 

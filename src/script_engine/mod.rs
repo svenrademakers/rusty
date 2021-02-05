@@ -1,19 +1,16 @@
 extern crate slotmap;
-mod pybinding;
+mod interpreter;
 
-use pybinding::*;
+use interpreter::*;
 pub use slotmap::*;
 use std::boxed::Box;
 use std::collections::HashMap;
+use std::error::Error;
 use std::ffi::OsStr;
 use std::path::Path;
 use std::vec::Vec;
 
-#[derive(PartialEq, Eq, Hash, Clone, Copy)]
-pub enum InterpreterType {
-    Unkown,
-    Python,
-}
+const python_extension: &str = "py";
 
 #[derive(Clone, PartialEq)]
 pub enum Argument {
@@ -37,41 +34,60 @@ struct ScriptStore {
     pub files: SecondaryMap<ScriptKey, String>,
 }
 
+#[derive(Debug)]
+enum ScriptEngineError {
+    ScriptKeyDoesNotExist(ScriptKey),
+    NoInterpreterAvailable(InterpreterType),
+}
+
+impl std::fmt::Display for ScriptEngineError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ScriptEngineError::ScriptKeyDoesNotExist(key) => {
+                write!(f, "{:?} does not exist.", key)
+            }
+            ScriptEngineError::NoInterpreterAvailable(x) => {
+                write!(f, "{} interpreter is not loaded.", x)
+            }
+        }
+    }
+}
+
+impl std::error::Error for ScriptEngineError {}
+
 pub struct ScriptEngine {
     context: ScriptStore,
-    bindings: HashMap<InterpreterType, Box<dyn Interpreter>>,
+    interpreters: HashMap<InterpreterType, Box<dyn Interpreter>>,
 }
 
 impl ScriptEngine {
     pub fn new() -> Self {
         ScriptEngine {
             context: ScriptStore::default(),
-            bindings: HashMap::new(),
+            interpreters: HashMap::new(),
         }
     }
 
-    pub fn load(&mut self, scripts_path: &str) -> bool {
+    pub fn load(&mut self, scripts_path: &str) -> Result<(), Box<dyn std::error::Error>> {
         self.load_bindings();
 
-        for entry in std::fs::read_dir(scripts_path)
-            .unwrap()
-            .map(|ent| ent.as_ref().unwrap().path())
-            .filter(|et| et.is_file())
-        {
-            if let Some(x) = entry.extension().and_then(OsStr::to_str) {
-                match x {
-                    "py" => {
-                        self.bindings
-                            .get_mut(&InterpreterType::Python)
-                            .unwrap()
-                            .parse(&entry, &mut self.context);
-                    }
-                    _ => {}
-                }
-            }
+        for entry in std::fs::read_dir(scripts_path)? {
+            let path = entry.as_ref().unwrap().path();
+
+            // if let Some(x) = entry.extension().and_then(OsStr::to_str) {
+            //     match x {
+            //         python_extension => {
+            //             self.interpreters
+            //                 .get_mut(&InterpreterType::Python)
+            //                 .unwrap()
+            //                 .parse(&entry, &mut self.context);
+            //         }
+            //         _ => {}
+            //     }
+            // }
         }
 
-        true
+        Ok(())
     }
 
     /// find key for given name.
@@ -85,21 +101,22 @@ impl ScriptEngine {
         None
     }
 
-    pub fn call(&self, script_key: ScriptKey, args: &[Argument]) -> bool {
-        let binding_type = self.context.scripts[script_key];
-        if let Some(x) = self.bindings.get(&binding_type) {
-            return x.call(script_key, args);
+    pub fn call(&self, script_key: ScriptKey, args: &[Argument]) -> Result<bool, Box<dyn Error>> {
+        let binding_type = self
+            .context
+            .scripts
+            .get(script_key)
+            .ok_or(ScriptEngineError::ScriptKeyDoesNotExist(script_key))?;
+        match self.interpreters.get(&binding_type) {
+            Some(binding) => return binding.call(script_key, args),
+            None => Err(Box::new(ScriptEngineError::NoInterpreterAvailable(
+                *binding_type,
+            ))),
         }
-        false
     }
 
     fn load_bindings(&mut self) {
-        self.bindings
+        self.interpreters
             .insert(InterpreterType::Python, Box::new(PyInterpreter::new()));
     }
-}
-
-pub trait Interpreter {
-    fn parse(&mut self, filename: &Path, script_store: &mut ScriptStore);
-    fn call(&self, script_key: ScriptKey, args: &[Argument]) -> bool;
 }
