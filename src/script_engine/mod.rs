@@ -1,6 +1,6 @@
 extern crate slotmap;
 mod interpreter;
-
+use crate::logging::*;
 use interpreter::*;
 pub use slotmap::*;
 use std::boxed::Box;
@@ -10,7 +10,7 @@ use std::ffi::OsStr;
 use std::path::Path;
 use std::vec::Vec;
 
-const python_extension: &str = "py";
+const PYTHON_EXTENSION: &str = "py";
 
 #[derive(Clone, PartialEq)]
 pub enum Argument {
@@ -72,19 +72,20 @@ impl ScriptEngine {
         self.load_bindings();
 
         for entry in std::fs::read_dir(scripts_path)? {
-            let path = entry.as_ref().unwrap().path();
-
-            // if let Some(x) = entry.extension().and_then(OsStr::to_str) {
-            //     match x {
-            //         python_extension => {
-            //             self.interpreters
-            //                 .get_mut(&InterpreterType::Python)
-            //                 .unwrap()
-            //                 .parse(&entry, &mut self.context);
-            //         }
-            //         _ => {}
-            //     }
-            // }
+            if let Ok(valid) = entry {
+                if let Some(x) = valid.path().extension().and_then(OsStr::to_str) {
+                    match x {
+                        PYTHON_EXTENSION => self
+                            .get_interpreter_mut(InterpreterType::Python)?
+                            .parse(&valid.path(), &mut self.context)?,
+                        _ => {
+                            debug!("skip {:?} for parsing", valid.path());
+                        }
+                    }
+                }
+            } else {
+                warn!("Skipping loading of {:?}", entry);
+            }
         }
 
         Ok(())
@@ -102,21 +103,42 @@ impl ScriptEngine {
     }
 
     pub fn call(&self, script_key: ScriptKey, args: &[Argument]) -> Result<bool, Box<dyn Error>> {
-        let binding_type = self
+        let interpreter_type = self
             .context
             .scripts
             .get(script_key)
             .ok_or(ScriptEngineError::ScriptKeyDoesNotExist(script_key))?;
-        match self.interpreters.get(&binding_type) {
-            Some(binding) => return binding.call(script_key, args),
-            None => Err(Box::new(ScriptEngineError::NoInterpreterAvailable(
-                *binding_type,
-            ))),
-        }
+
+        self.get_interpreter(*interpreter_type)?
+            .call(script_key, args)
     }
 
     fn load_bindings(&mut self) {
         self.interpreters
             .insert(InterpreterType::Python, Box::new(PyInterpreter::new()));
+    }
+
+    fn get_interpreter(
+        &self,
+        interpreter_type: InterpreterType,
+    ) -> Result<&Box<dyn Interpreter>, Box<dyn Error>> {
+        match self.interpreters.get(&interpreter_type) {
+            Some(x) => Ok(x),
+            None => Err(Box::new(ScriptEngineError::NoInterpreterAvailable(
+                interpreter_type,
+            ))),
+        }
+    }
+
+    fn get_interpreter_mut(
+        &self,
+        interpreter_type: InterpreterType,
+    ) -> Result<&mut Box<dyn Interpreter>, Box<dyn Error>> {
+        match self.interpreters.get_mut(&interpreter_type) {
+            Some(x) => Ok(x),
+            None => Err(Box::new(ScriptEngineError::NoInterpreterAvailable(
+                interpreter_type,
+            ))),
+        }
     }
 }
