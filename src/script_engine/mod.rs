@@ -75,9 +75,10 @@ impl ScriptEngine {
             if let Ok(valid) = entry {
                 if let Some(x) = valid.path().extension().and_then(OsStr::to_str) {
                     match x {
-                        PYTHON_EXTENSION => self
-                            .get_interpreter_mut(InterpreterType::Python)?
-                            .parse(&valid.path(), &mut self.context)?,
+                        PYTHON_EXTENSION => {return self.interpreters
+                                        .get_mut(&InterpreterType::Python)
+                                        .unwrap()
+                                        .parse(&valid.path(), &mut self.context);},
                         _ => {
                             debug!("skip {:?} for parsing", valid.path());
                         }
@@ -123,18 +124,6 @@ impl ScriptEngine {
         interpreter_type: InterpreterType,
     ) -> Result<&Box<dyn Interpreter>, Box<dyn Error>> {
         match self.interpreters.get(&interpreter_type) {
-            Some(x) => Ok(x),
-            None => Err(Box::new(ScriptEngineError::NoInterpreterAvailable(
-                interpreter_type,
-            ))),
-        }
-    }
-
-    fn get_interpreter_mut(
-        &self,
-        interpreter_type: InterpreterType,
-    ) -> Result<&mut Box<dyn Interpreter>, Box<dyn Error>> {
-        match self.interpreters.get_mut(&interpreter_type) {
             Some(x) => Ok(x),
             None => Err(Box::new(ScriptEngineError::NoInterpreterAvailable(
                 interpreter_type,

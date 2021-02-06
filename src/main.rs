@@ -89,8 +89,10 @@ fn main() {
     script_engine.load(scripts_path);
 
     if let Some(key) = script_engine.find(script_name) {
-        if script_engine.call(key, &Vec::new()).is_ok() {
+        if script_engine.call(key, &Vec::new()).unwrap() {
             info!("Called {} successfully!", script_name);
         }
+    } else {
+        println!("Script {} does not exist", script_name);
     }
 }
