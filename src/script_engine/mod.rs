@@ -25,7 +25,7 @@ pub enum Argument {
 new_key_type! {pub struct ScriptKey;}
 
 #[derive(Default)]
-struct ScriptStore {
+pub struct ScriptStore {
     pub scripts: SlotMap<ScriptKey, InterpreterType>,
     pub names: SecondaryMap<ScriptKey, String>,
     pub description: SecondaryMap<ScriptKey, String>,
@@ -35,12 +35,13 @@ struct ScriptStore {
 }
 
 #[derive(Debug)]
-enum ScriptEngineError {
+enum ScriptEngineError<'a> {
     ScriptKeyDoesNotExist(ScriptKey),
     NoInterpreterAvailable(InterpreterType),
+    MissingArguments(Vec<&'a str>),
 }
 
-impl std::fmt::Display for ScriptEngineError {
+impl<'a> std::fmt::Display for ScriptEngineError<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ScriptEngineError::ScriptKeyDoesNotExist(key) => {
@@ -49,14 +50,17 @@ impl std::fmt::Display for ScriptEngineError {
             ScriptEngineError::NoInterpreterAvailable(x) => {
                 write!(f, "{} interpreter is not loaded.", x)
             }
+            ScriptEngineError::MissingArguments(vec) => {
+                write!(f, "missing arguments {:?}", vec)
+            }
         }
     }
 }
 
-impl std::error::Error for ScriptEngineError {}
+impl<'a> std::error::Error for ScriptEngineError<'a> {}
 
 pub struct ScriptEngine {
-    context: ScriptStore,
+    pub context: ScriptStore,
     interpreters: HashMap<InterpreterType, Box<dyn Interpreter>>,
 }
 
@@ -75,10 +79,13 @@ impl ScriptEngine {
             if let Ok(valid) = entry {
                 if let Some(x) = valid.path().extension().and_then(OsStr::to_str) {
                     match x {
-                        PYTHON_EXTENSION => {return self.interpreters
-                                        .get_mut(&InterpreterType::Python)
-                                        .unwrap()
-                                        .parse(&valid.path(), &mut self.context);},
+                        PYTHON_EXTENSION => {
+                            return self
+                                .interpreters
+                                .get_mut(&InterpreterType::Python)
+                                .unwrap()
+                                .parse(&valid.path(), &mut self.context);
+                        }
                         _ => {
                             debug!("skip {:?} for parsing", valid.path());
                         }
@@ -109,6 +116,10 @@ impl ScriptEngine {
             .scripts
             .get(script_key)
             .ok_or(ScriptEngineError::ScriptKeyDoesNotExist(script_key))?;
+
+        if args.len() == self.context.arguments.get(script_key).unwrap().len() {
+            return Err(Box::new(ScriptEngineError::MissingArguments(Vec::new())));
+        }
 
         self.get_interpreter(*interpreter_type)?
             .call(script_key, args)

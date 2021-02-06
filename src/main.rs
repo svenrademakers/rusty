@@ -94,5 +94,9 @@ fn main() {
         }
     } else {
         println!("Script {} does not exist", script_name);
+        println!("Available scripts: ");
+        for name in script_engine.context.names {
+            println!("{:?}", name.1);
+        }
     }
 }

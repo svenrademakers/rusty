@@ -40,24 +40,32 @@ impl<'a> PyInterpreter<'a> {
         }
     }
 
-    fn bind_to_python(&self, contents: &str, filename: &str, module_name: &str) -> Vec<&'a PyAny> {
+    fn bind_to_python(
+        &self,
+        contents: &str,
+        filename: &str,
+        module_name: &str,
+    ) -> Vec<(String, &'a PyAny)> {
         let mut objects = Vec::new();
         let module = PyModule::from_code(self.py, &contents, &filename, &module_name).unwrap();
-
         for obj in module.dict().keys() {
-            let name = obj.str().unwrap().to_str().unwrap();
+            let name = obj.str().unwrap().to_str().unwrap().to_string();
             let obj = module.get(&name).unwrap();
+
             if obj.is_callable() {
-                objects.push(obj);
+                objects.push((name, obj));
             }
         }
         objects
     }
 
-    fn get_arguments(py_any : &PyAny) -> Option<Vec<String, ScriptEngine::Argument>>
-    {
-        for attribute in py_any.dir(){
+    pub fn get_arguments(py_any: &PyAny) -> Vec<Argument> {
+        let mut args = Vec::new();
+        for var_name in py_any.getattr("__code__").unwrap().getattr("co_varnames") {
+            args.push(Argument::String(var_name.to_string()));
         }
+
+        args
     }
 }
 
@@ -67,13 +75,13 @@ impl<'a> Interpreter for PyInterpreter<'a> {
             let filename = path.file_name().and_then(OsStr::to_str).unwrap();
             let module_name = path.file_stem().and_then(OsStr::to_str).unwrap();
 
-            for obj in self.bind_to_python(&contents, &filename, &module_name) {
+            for (name, obj) in self.bind_to_python(&contents, &filename, &module_name) {
                 let key = script_store.scripts.insert(InterpreterType::Python);
                 self.callables.insert(key, obj);
+                script_store.names.insert(key, name);
                 script_store
-                    .names
-                    .insert(key, obj.str().unwrap().to_string_lossy().to_string());
-
+                    .arguments
+                    .insert(key, PyInterpreter::get_arguments(obj));
                 script_store
                     .files
                     .insert(key, path.to_string_lossy().to_string());
@@ -83,15 +91,20 @@ impl<'a> Interpreter for PyInterpreter<'a> {
         Ok(())
     }
 
-    fn call(&self, script_key: ScriptKey, _args: &[Argument]) -> Result<bool, Box<dyn Error>> {
-        println!("TEST");
+    fn call(&self, script_key: ScriptKey, args: &[Argument]) -> Result<bool, Box<dyn Error>> {
         if let Some(x) = self.callables.get(script_key) {
-            if let Ok(res) = x.call0() {
-                println!("Called successfully {}", res);
-                return Ok(true);
+            if args.len() == 0 {
+                x.call0().unwrap();
+            } else {
+                //x.call1(args)
             }
         }
-        Ok(false)
+
+        // let locals = None;
+        // self.py.run("s = f.getvalue()", None, locals).unwrap();
+
+        // println!("{:?}", locals);
+        Ok(true)
     }
 }
 
