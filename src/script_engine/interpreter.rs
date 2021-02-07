@@ -1,7 +1,11 @@
 extern crate pyo3;
 
 use crate::script_engine::*;
-pub use pyo3::{prelude::*, types::PyModule};
+use pyo3::PyErrArguments;
+pub use pyo3::{
+    prelude::*,
+    types::{PyModule, PyTuple},
+};
 
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
 pub enum InterpreterType {
@@ -85,6 +89,11 @@ impl<'a> Interpreter for PyInterpreter<'a> {
                 script_store
                     .files
                     .insert(key, path.to_string_lossy().to_string());
+
+                if obj.hasattr("__doc__")? {
+                    let doc = obj.getattr("__doc__").unwrap().to_string();
+                    script_store.description.insert(key, doc);
+                }
             }
         }
 
@@ -96,14 +105,17 @@ impl<'a> Interpreter for PyInterpreter<'a> {
             if args.len() == 0 {
                 x.call0().unwrap();
             } else {
-                //x.call1(args)
+                let mut py_arguments = Vec::new();
+                for arg in args {
+                    match arg {
+                        Argument::String(x) => py_arguments.push(x),
+                        _ => {}
+                    }
+                }
+                let py_args = PyTuple::new(self.py, py_arguments);
+                x.call1(py_args).unwrap();
             }
         }
-
-        // let locals = None;
-        // self.py.run("s = f.getvalue()", None, locals).unwrap();
-
-        // println!("{:?}", locals);
         Ok(true)
     }
 }

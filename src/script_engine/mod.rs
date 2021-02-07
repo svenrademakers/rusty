@@ -117,12 +117,21 @@ impl ScriptEngine {
             .get(script_key)
             .ok_or(ScriptEngineError::ScriptKeyDoesNotExist(script_key))?;
 
-        if args.len() == self.context.arguments.get(script_key).unwrap().len() {
+        self.return_on_invalid_arguments(&script_key, args.len())?;
+        self.get_interpreter(*interpreter_type)?
+            .call(script_key, args)
+    }
+
+    fn return_on_invalid_arguments(
+        &self,
+        script_key: &ScriptKey,
+        arg_len: usize,
+    ) -> Result<(), Box<dyn Error>> {
+        if arg_len != self.context.arguments.get(*script_key).unwrap().len() {
             return Err(Box::new(ScriptEngineError::MissingArguments(Vec::new())));
         }
 
-        self.get_interpreter(*interpreter_type)?
-            .call(script_key, args)
+        Ok(())
     }
 
     fn load_bindings(&mut self) {
