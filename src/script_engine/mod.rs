@@ -80,11 +80,10 @@ impl ScriptEngine {
                 if let Some(x) = valid.path().extension().and_then(OsStr::to_str) {
                     match x {
                         PYTHON_EXTENSION => {
-                            return self
-                                .interpreters
+                            self.interpreters
                                 .get_mut(&InterpreterType::Python)
                                 .unwrap()
-                                .parse(&valid.path(), &mut self.context);
+                                .parse(&valid.path(), &mut self.context)?;
                         }
                         _ => {
                             debug!("skip {:?} for parsing", valid.path());
