@@ -6,28 +6,26 @@ use regex::*;
 use std::io::{Error, ErrorKind};
 use std::path::{Path, PathBuf};
 
-fn update_key_value(key: &str, value: &str, output: &str) -> bool {
+fn update_key_value(key: &str, value: &str, output: &str) -> Option<String> {
     let regex_string = format!("(.+){}(.+\").*(\".+)", key);
     if let Ok(re) = regex::Regex::new(&regex_string) {
         let result = re.replace(output, |caps: &Captures| {
             format!("{}{}{}{}{}", &caps[1], key, &caps[2], value, &caps[3])
         });
-        assert_ne!(result, output);
-        return true;
+        return Some(result.to_string());
     }
-    false
+    None
 }
 
 fn update_file(file: &Path, definitions: &Vec<(&str, &str)>) -> Result<(), Error> {
-    let f = std::fs::read_to_string(file)?;
+    let mut f = std::fs::read_to_string(file)?;
     for (key, value) in definitions {
-        if !update_key_value(key, value, &f) {
-            return Err(Error::new(
-                ErrorKind::Other,
-                format!("{} - {} not updated", key, value),
-            ));
-        }
+        f = update_key_value(key, value, &f).ok_or(Error::new(
+            ErrorKind::Other,
+            format!("{} - {} not updated", key, value),
+        ))?;
     }
+
     std::fs::write(file, f)
 }
 
