@@ -1,0 +1,23 @@
+{
+  "name": "Svens Amazing App",
+  "version": "1.0.0",
+  "description": "An application",
+  "main": "app/main.js",
+  "scripts": {
+    "start": "gulp start"
+  },
+  "author": "Sven Rademakers",
+  "license": "CC0-1.0",
+  "devDependencies": {
+    "@babel/core": "^7.12.13",
+    "@babel/preset-env": "^7.12.13",
+    "@babel/preset-react": "^7.12.13",
+    "electron": "^11.2.3",
+    "gulp": "^4.0.2",
+    "gulp-babel": "^8.0.0",
+    "gulp-clean-css": "^4.3.0",
+    "gulp-concat": "^2.6.1",
+    "react": "^17.0.1",
+    "react-dom": "^17.0.1"
+  }
+}
