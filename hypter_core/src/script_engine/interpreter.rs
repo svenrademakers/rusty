@@ -1,7 +1,6 @@
 extern crate pyo3;
 
 use crate::script_engine::*;
-use pyo3::PyErrArguments;
 pub use pyo3::{
     prelude::*,
     types::{PyModule, PyTuple},

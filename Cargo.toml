@@ -1,22 +1,6 @@
-[package]
-name = "rust_app"
-version = "0.1.0"
-authors = ["Sven Rademakers <sven.rademakers@gmail.com>"]
-edition = "2018"
+[workspace]
 
-[dependencies]
-log = "*"
-app_dirs = { package = "app_dirs2", version = "*" }
-json = "*"
-notify = "*"
-clap ="*"
-slotmap="*"
-
-[dependencies.pyo3]
-version = "*"
-features = ["extension-module"]
-
-[build-dependencies]
-git = { package = "git2", version= "*"}
-regex = "*"
-chrono = "*"
+members = [
+    "hypter_core",
+    "hypter_cli",
+]

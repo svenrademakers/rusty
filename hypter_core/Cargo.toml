@@ -1,0 +1,14 @@
+[package]
+name = "hypter_core"
+version = "0.1.0"
+authors = ["Sven Rademakers <sven.rademakers@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+log = "*"
+json = "*"
+slotmap="*"
+
+[dependencies.pyo3]
+version = "*"
+features = ["extension-module"]

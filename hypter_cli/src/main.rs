@@ -1,12 +1,9 @@
 mod app_meta;
-mod logging;
-mod script_engine;
-mod settings;
-
 use app_meta::*;
-use logging::*;
-use script_engine::{ScriptEngine, ScriptStore};
-use settings::*;
+
+use hypter_core::logging::*;
+use hypter_core::script_engine::{ScriptEngine, ScriptStore, Argument};
+use hypter_core::settings::*;
 
 extern crate clap;
 use clap::{App, AppSettings, Arg, ArgMatches, SubCommand};
@@ -107,7 +104,7 @@ fn list_subcommand(script_store: ScriptStore) {
 fn run_subcommand(matches: &ArgMatches, script_engine: ScriptEngine) {
     let script_name = matches.value_of("Script Name").unwrap();
 
-    let arguments = vec![script_engine::Argument::String("BAMI".to_string())];
+    let arguments = vec![Argument::String("BAMI".to_string())];
     if let Some(key) = script_engine.find(script_name) {
         if script_engine.call(key, &arguments).unwrap() {
             info!("Called {} successfully!", script_name);

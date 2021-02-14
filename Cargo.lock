@@ -279,6 +279,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "hypter_cli"
+version = "0.1.0"
+dependencies = [
+ "app_dirs2",
+ "chrono",
+ "clap",
+ "git2",
+ "hypter_core",
+ "notify",
+ "regex",
+]
+
+[[package]]
+name = "hypter_core"
+version = "0.1.0"
+dependencies = [
+ "json",
+ "log",
+ "pyo3",
+ "slotmap",
+]
+
+[[package]]
 name = "ident_case"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -821,22 +844,6 @@ name = "regex-syntax"
 version = "0.6.22"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b5eb417147ba9860a96cfe72a0b93bf88fee1744b5636ec99ab20c1aa9376581"
-
-[[package]]
-name = "rust_app"
-version = "0.1.0"
-dependencies = [
- "app_dirs2",
- "chrono",
- "clap",
- "git2",
- "json",
- "log",
- "notify",
- "pyo3",
- "regex",
- "slotmap",
-]
 
 [[package]]
 name = "same-file"

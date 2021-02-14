@@ -1,0 +1,16 @@
+[package]
+name = "hypter_cli"
+version = "0.1.0"
+authors = ["Sven Rademakers <sven.rademakers@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+hypter_core = { path = "../hypter_core" }
+app_dirs = { package = "app_dirs2", version = "*" }
+notify = "*"
+clap ="*"
+
+[build-dependencies]
+git = { package = "git2", version= "*"}
+regex = "*"
+chrono = "*"
