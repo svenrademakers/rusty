@@ -1,9 +1,12 @@
 extern crate slotmap;
 mod interpreter;
+mod py_interpreter;
 
 use crate::logging::*;
 
 use interpreter::*;
+use py_interpreter::*;
+
 pub use slotmap::*;
 use std::boxed::Box;
 use std::collections::HashMap;
