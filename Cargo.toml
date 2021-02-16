@@ -3,4 +3,5 @@
 members = [
     "hypter_core",
     "hypter_cli",
+    "pocketrocket_napi",
 ]
