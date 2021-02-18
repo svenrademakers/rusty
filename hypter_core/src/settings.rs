@@ -9,37 +9,36 @@ use std::collections::HashMap;
 use std::hash::Hash;
 use std::marker::Copy;
 
-use std::vec::Vec;
-
 pub type KeyWithDefault<Key> = (Key, &'static str, JsonValue);
 pub type SettingsReloaded<T> = dyn Fn(&T);
 
-pub struct Settings<'a, Key>
+pub struct Settings<Key>
 where
     Key: Eq + Hash + Copy,
 {
     settings: HashMap<Key, JsonValue>,
     mapping: HashMap<&'static str, Key>,
-    observers: Vec<&'a SettingsReloaded<Key>>,
 }
 
-impl<'a, Key> Settings<'a, Key>
+impl<Key> Settings<Key>
 where
     Key: Eq + Hash + Copy,
 {
-    pub fn new(settings_file: &str, key_mapping: &[KeyWithDefault<Key>]) -> Self {
+    pub fn new(key_mapping: &[KeyWithDefault<Key>]) -> Self {
         let mut set = Settings::<Key> {
             settings: HashMap::new(),
             mapping: HashMap::new(),
-            observers: Vec::new(),
         };
 
         for (key, json_key, default) in key_mapping {
             set.settings.insert(*key, default.clone());
             set.mapping.insert(json_key, *key);
         }
-        set.from_json(&settings_file);
         set
+    }
+
+    pub fn load(&mut self, settings_file: &str) {
+        self.from_json(&settings_file);
     }
 
     // pub fn set_str(&mut self, setting: Key, value: String) {
@@ -50,9 +49,9 @@ where
         self.settings.get(&setting).map(|x| x.as_str())?
     }
 
-    pub fn on_config_reload(&mut self, callback: &'a SettingsReloaded<Key>) {
-        self.observers.push(callback);
-    }
+    // pub fn on_config_reload(&mut self, callback: &'a SettingsReloaded<Key>) {
+    //     self.observers.push(callback);
+    // }
 
     fn from_json(&mut self, settings_file: &str) {
         if let Ok(contents) = std::fs::read_to_string(settings_file) {

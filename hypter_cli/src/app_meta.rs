@@ -6,5 +6,5 @@ pub const APP_INFO: AppInfo = AppInfo {
     author: "sven",
 };
 
-pub const VERSION: &str = "909bd1d";
-pub const BUILD_DATE: &str = "8-2-2021";
+pub const VERSION: &str = "23184e9";
+pub const BUILD_DATE: &str = "18-2-2021";

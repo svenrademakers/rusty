@@ -1,34 +1,27 @@
 mod app_meta;
 use app_meta::*;
-
-use hypter_core::logging::*;
-use hypter_core::script_engine::{ScriptEngine, ScriptStore, Argument};
 use hypter_core::settings::*;
+use hypter_core::{app_setting_defaults, logging::*, SettingKey};
+use hypter_core::{
+    script_engine::{Argument, ScriptEngine, ScriptStore},
+    settings,
+};
 
 extern crate clap;
 use clap::{App, AppSettings, Arg, ArgMatches, SubCommand};
 
 fn main() {
     init_logging(LevelFilter::Debug).unwrap();
+
     info!("App:\t{}", APP_INFO.name);
     info!("Author: \t{}", APP_INFO.author);
     info!("Version:\t{} ({})", VERSION, BUILD_DATE);
     info!("--------------------------------------");
 
-    let user_config_path =
-        app_dirs::get_app_root(app_dirs::AppDataType::UserConfig, &app_meta::APP_INFO)
-            .map(|path| {
-                let mut config = path;
-                config.push("config.json");
-                config.to_string_lossy().to_string()
-            })
-            .unwrap();
-
-    let settings = Settings::new(&user_config_path, &setting_defaults());
-    let scripts_path = settings.get_str(SettingKey::ScriptsDir).unwrap();
-    info!("scripts_path: {}", scripts_path);
+    let settings = load_settings();
 
     let mut script_engine = ScriptEngine::new();
+    let scripts_path = settings.get_str(SettingKey::ScriptsDir).unwrap();
     script_engine.load(scripts_path).unwrap();
 
     let matches = get_app_cli(scripts_path);
@@ -39,32 +32,19 @@ fn main() {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
-pub enum SettingKey {
-    ScriptsDir,
-    FolderScan,
-}
+fn load_settings() -> Settings<SettingKey> {
+    let user_config_path =
+        app_dirs::get_app_root(app_dirs::AppDataType::UserConfig, &app_meta::APP_INFO)
+            .map(|path| {
+                let mut config = path;
+                config.push("config.json");
+                config.to_string_lossy().to_string()
+            })
+            .unwrap();
 
-fn setting_defaults() -> Vec<KeyWithDefault<SettingKey>> {
-    let mut dict: Vec<KeyWithDefault<SettingKey>> = Vec::new();
-
-    // default scripts dir
-    let mut scripts_dir = std::env::current_dir().unwrap_or_default();
-    scripts_dir.push("scripts");
-    dict.push((
-        SettingKey::ScriptsDir,
-        "scripts_dir",
-        JsonValue::String(scripts_dir.to_string_lossy().to_string()),
-    ));
-
-    // default folder scan
-    dict.push((
-        SettingKey::FolderScan,
-        "folder_scan",
-        JsonValue::Boolean(true),
-    ));
-
-    dict
+    let mut settings = settings::Settings::new(&app_setting_defaults());
+    settings.load(&user_config_path);
+    settings
 }
 
 fn get_app_cli(scripts_path: &str) -> ArgMatches {

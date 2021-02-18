@@ -10,5 +10,5 @@ json = "*"
 slotmap="*"
 
 [dependencies.pyo3]
-version = "*"
-features = ["extension-module"]
+version = "0.13.2"
+features = ["auto-initialize"]

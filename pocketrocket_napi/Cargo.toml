@@ -8,8 +8,12 @@ edition = "2018"
 crate-type = ["cdylib"]
 
 [dependencies]
-napi = "1.0"
-napi-derive = "1.0"
+napi = "*"
+napi-derive = "*"
+lazy_static = "*"
+hypter_core = { path = "../hypter_core" }
+
+
 
 [build-dependencies]
 napi-build = "1.0"

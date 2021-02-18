@@ -18,7 +18,7 @@ fn update_key_value(key: &str, value: &str, output: &str) -> Option<String> {
 }
 
 fn update_file(file: &Path, definitions: &Vec<(&str, &str)>) -> Result<(), Error> {
-    let mut f = std::fs::read_to_string(file)?;
+    let mut f = std::fs::read_to_string(file).expect(format!(" cannot read {:?}", file).as_str());
     for (key, value) in definitions {
         f = update_key_value(key, value, &f).ok_or(Error::new(
             ErrorKind::Other,
@@ -55,7 +55,6 @@ fn get_git_info() -> (PathBuf, String) {
 ///
 pub fn write_app_meta(rust_file: &str, version_name: &str, build_time_name: &str) {
     let (mut file, git_version) = get_git_info();
-    file.push("src");
     file.push(rust_file);
 
     let mut definitions = Vec::new();
