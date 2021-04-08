@@ -97,3 +97,5 @@ impl<'a> Interpreter for PyInterpreter<'a> {
         Ok(true)
     }
 }
+
+  unsafe impl<'a> std::marker::Send for PyInterpreter<'a> {}

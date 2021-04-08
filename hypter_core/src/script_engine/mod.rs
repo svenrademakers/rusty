@@ -66,7 +66,7 @@ impl<'a> std::error::Error for ScriptEngineError<'a> {}
 
 pub struct ScriptEngine {
     pub context: ScriptStore,
-    interpreters: HashMap<InterpreterType, Box<dyn Interpreter>>,
+    interpreters: HashMap<InterpreterType, Box<dyn Interpreter + std::marker::Send>>,
 }
 
 impl ScriptEngine {
@@ -146,7 +146,7 @@ impl ScriptEngine {
     fn get_interpreter(
         &self,
         interpreter_type: InterpreterType,
-    ) -> Result<&Box<dyn Interpreter>, Box<dyn Error>> {
+    ) -> Result<&Box<dyn Interpreter + std::marker::Send>, Box<dyn Error>> {
         match self.interpreters.get(&interpreter_type) {
             Some(x) => Ok(x),
             None => Err(Box::new(ScriptEngineError::NoInterpreterAvailable(

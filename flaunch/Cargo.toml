@@ -1,19 +1,8 @@
 [package]
-name = "pocketrocket_napi"
+name = "flaunch"
 version = "0.1.0"
 authors = ["Sven Rademakers <sven.rademakers@gmail.com>"]
 edition = "2018"
 
-[lib]
-crate-type = ["cdylib"]
-
 [dependencies]
-napi = "*"
-napi-derive = "*"
-lazy_static = "*"
 hypter_core = { path = "../hypter_core" }
-
-
-
-[build-dependencies]
-napi-build = "1.0"

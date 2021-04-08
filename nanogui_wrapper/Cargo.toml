@@ -1,0 +1,8 @@
+[package]
+name = "nanogui_wrapper"
+version = "0.1.0"
+authors = ["Sven Rademakers <sven.rademakers@gmail.com>"]
+edition = "2018"
+
+[build-dependencies]
+cmake ="*"
