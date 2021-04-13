@@ -1,34 +1,23 @@
 #include "nanogui/nanogui.h"
 #include <vector>
+#include <sstream>
+using namespace nanogui;
 
-extern "C"
+namespace ui
 {
-    using namespace nanogui;
+    static Screen *ourScreen = nullptr;
 
-    enum test_enum
+    void init(const char *version, const char *build_date)
     {
-        Item1 = 0,
-        Item2,
-        Item3
-    };
-
-    bool bvar = true;
-    int ivar = 12345678;
-    double dvar = 3.1415926;
-    float fvar = (float)dvar;
-    std::string strval = "A string";
-    test_enum enumval = Item2;
-    Color colval(0.5f, 0.5f, 0.7f, 1.f);
-
-    void init()
-    {
+        std::stringstream ss;
+        ss << "Flaunch - Sven Rademakers [" << version << "][" << build_date << "][devbuild]";
         nanogui::init();
+        ourScreen = new Screen(Vector2i(500, 700), ss.str());
     }
 
     void mainloop()
     {
-        Screen *screen = new Screen(Vector2i(500, 700), "Flaunch - Sven Rademakers [devbuild]");
-        Button *testbtn = new Button(screen, "JONGEN");
+        nanogui::Button *testbtn = new nanogui::Button(ourScreen, "JONGEN");
 
         // bool enabled = true;
         // FormHelper *gui = new FormHelper(screen);
@@ -57,8 +46,8 @@ extern "C"
         // gui->addGroup("Other widgets");
         // gui->addButton("A button", []() { std::cout << "Button pressed." << std::endl; });
 
-        screen->setVisible(true);
-        screen->performLayout();
+        ourScreen->setVisible(true);
+        ourScreen->performLayout();
 
         nanogui::mainloop();
         nanogui::shutdown();

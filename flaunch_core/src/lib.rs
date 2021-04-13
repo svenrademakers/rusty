@@ -1,6 +1,7 @@
 pub mod logging;
 pub mod script_engine;
 pub mod settings;
+pub mod app_meta;
 
 use settings::{JsonValue, KeyWithDefault};
 

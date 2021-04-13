@@ -12,8 +12,9 @@ fn main() {
     let mut conf = Config::new(".");
     conf.profile(BUILD_TYPE);
     conf.build_target("flaunch_ui");
+    println!("cargo:rerun-if-changed=incl/flaunch_ui.hpp");
+    println!("cargo:rerun-if-changed=src/flaunch_ui.cpp");
 
-    println!("cargo:rerun-if-changed=incl/flaunch_ui.h");
     println!(
         "cargo:rustc-link-search=native={}\\build\\{}",
         conf.build().display(), BUILD_TYPE
@@ -24,12 +25,17 @@ fn main() {
     println!("cargo:rustc-link-lib=static=nanogui");
     println!("cargo:rustc-link-lib=static=ComDlg32");
 
+    println!("cargo:rustc-env=BINDGEN_EXTRA_CLANG_ARGS=-x c++ -std=c++11");
     // generate bindings for ui framework
     let bindings = bindgen::Builder::default()
-    .header("incl/flaunch_ui.h")
+    .header("incl/flaunch_ui.hpp")
     .parse_callbacks(Box::new(bindgen::CargoCallbacks))
+    .enable_cxx_namespaces()
+    .opaque_type("std::.*")
+    .allowlist_type("std::string")
+    .allowlist_function("ui.*")
     .generate()
-    .expect("Unable to generate bindings");
+    .unwrap();
 
     bindings
         .write_to_file(out_path.join("flaunch_ui_bindings.rs"))

@@ -8,6 +8,8 @@ edition = "2018"
 log = "*"
 json = "*"
 slotmap="*"
+app_dirs = { package = "app_dirs2", version = "*" }
+
 
 [dependencies.pyo3]
 version = "0.13.2"
