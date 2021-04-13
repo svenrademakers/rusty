@@ -206,6 +206,7 @@ name = "flaunch"
 version = "0.1.0"
 dependencies = [
  "hypter_core",
+ "nanogui_wrapper",
 ]
 
 [[package]]

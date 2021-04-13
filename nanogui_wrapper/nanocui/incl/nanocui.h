@@ -7,9 +7,10 @@ extern "C"
 #endif
 
     void init();
-    void run();
+    void mainloop();
 
 #ifdef __cplusplus
 }
 #endif
+
 #endif

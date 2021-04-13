@@ -6,3 +6,4 @@ edition = "2018"
 
 [dependencies]
 hypter_core = { path = "../hypter_core" }
+nanogui_wrapper = { path = "../nanogui_wrapper" }
