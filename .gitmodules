@@ -1,3 +1,3 @@
-[submodule "nanogui_wrapper/nanocui/extern/nanogui"]
-	path = nanogui_wrapper/nanocui/extern/nanogui
+[submodule "flaunch_ui/extern/nanogui"]
+	path = flaunch_ui/extern/nanogui
 	url = https://github.com/wjakob/nanogui.git

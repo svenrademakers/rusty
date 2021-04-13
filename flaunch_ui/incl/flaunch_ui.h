@@ -9,6 +9,8 @@ extern "C"
     void init();
     void mainloop();
 
+    int add_script(const char *name);
+
 #ifdef __cplusplus
 }
 #endif

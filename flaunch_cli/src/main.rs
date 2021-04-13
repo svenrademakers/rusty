@@ -1,8 +1,8 @@
 mod app_meta;
 use app_meta::*;
-use hypter_core::settings::*;
-use hypter_core::{app_setting_defaults, logging::*, SettingKey};
-use hypter_core::{
+use flaunch_core::settings::*;
+use flaunch_core::{app_setting_defaults, logging::*, SettingKey};
+use flaunch_core::{
     script_engine::{Argument, ScriptEngine, ScriptStore},
     settings,
 };

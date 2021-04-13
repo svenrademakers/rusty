@@ -1,5 +1,5 @@
 cmake_minimum_required (VERSION 3.19.0)
-project("nanocui")
+project("flaunch_ui")
 set( CMAKE_SUPPORT_WINDOWS_EXPORT_ALL_SYMBOLS 1 )
 set(NANOGUI_BUILD_EXAMPLE ON CACHE BOOL " " FORCE)
 set(NANOGUI_BUILD_PYTHON  OFF CACHE BOOL " " FORCE)
@@ -13,7 +13,7 @@ add_definitions(${NANOGUI_EXTRA_DEFS})
 # On top of adding the path to nanogui/include, you may need extras
 include_directories(${NANOGUI_EXTRA_INCS})
 
-add_library(nanocui STATIC src/nanocui.cpp)
-target_link_libraries(nanocui nanogui ${NANOGUI_EXTRA_LIBS})
-target_include_directories(nanocui  PRIVATE
+add_library(flaunch_ui STATIC src/flaunch_ui.cpp)
+target_link_libraries(flaunch_ui nanogui ${NANOGUI_EXTRA_LIBS})
+target_include_directories(flaunch_ui  PRIVATE
 	$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/extern/nanogui/include>)

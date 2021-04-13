@@ -1,9 +1,9 @@
 [workspace]
 
 members = [
-    "hypter_core",
-    "hypter_cli",
+    "flaunch_core",
+    "flaunch_cli",
     "flaunch",
-    "nanogui_wrapper"
+    "flaunch_ui"
 ]
 

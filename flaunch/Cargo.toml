@@ -5,5 +5,5 @@ authors = ["Sven Rademakers <sven.rademakers@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-hypter_core = { path = "../hypter_core" }
-nanogui_wrapper = { path = "../nanogui_wrapper" }
+flaunch_core = { path = "../flaunch_core" }
+flaunch_ui = { path = "../flaunch_ui" }

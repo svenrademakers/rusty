@@ -1,5 +1,5 @@
 [package]
-name = "hypter_core"
+name = "flaunch_core"
 version = "0.1.0"
 authors = ["Sven Rademakers <sven.rademakers@gmail.com>"]
 edition = "2018"
