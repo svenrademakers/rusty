@@ -17,8 +17,6 @@ namespace ui
 
     void mainloop()
     {
-        nanogui::Button *testbtn = new nanogui::Button(ourScreen, "JONGEN");
-
         // bool enabled = true;
         // FormHelper *gui = new FormHelper(screen);
         // ref<Window> window = gui->addWindow(Eigen::Vector2i(10, 10), "Form helper example");
@@ -63,7 +61,6 @@ namespace ui
 
     int add_script(const char *name)
     {
-        ourScripts.push_back({name = name});
-        return ourScripts.size() - 1;
+        new nanogui::Button(ourScreen, name);
     }
 }

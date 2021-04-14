@@ -1,9 +1,9 @@
 extern crate json;
 use crate::logging;
-
+use crate::app_meta;
 pub use json::JsonValue;
 
-use logging::{error, warn};
+use logging::*;
 use std::cmp::Eq;
 use std::collections::HashMap;
 use std::hash::Hash;
@@ -37,8 +37,16 @@ where
         set
     }
 
-    pub fn load(&mut self, settings_file: &str) {
-        self.from_json(&settings_file);
+    pub fn load(&mut self) {
+        let settings_file = master_settings();
+        debug!("master_settings file = {}", settings_file.to_string_lossy());
+        if settings_file.exists(){
+            self.from_json(&settings_file.to_string_lossy().to_string());
+        }
+    }
+
+    pub fn reset(&self) {
+        std::fs::remove_file(master_settings()).unwrap();
     }
 
     // pub fn set_str(&mut self, setting: Key, value: String) {
@@ -72,4 +80,11 @@ where
             warn!("app config {}, not found", settings_file);
         }
     }
+}
+
+fn master_settings() -> std::path::PathBuf {
+    let mut settings_file =
+    app_dirs::get_app_root(app_dirs::AppDataType::UserConfig, &app_meta::APP_INFO).unwrap();
+    settings_file.push("config.json");
+    settings_file
 }
