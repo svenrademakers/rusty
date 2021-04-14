@@ -17,3 +17,5 @@ add_library(flaunch_ui STATIC src/flaunch_ui.cpp)
 target_link_libraries(flaunch_ui nanogui ${NANOGUI_EXTRA_LIBS})
 target_include_directories(flaunch_ui  PRIVATE
 	$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/extern/nanogui/include>)
+
+

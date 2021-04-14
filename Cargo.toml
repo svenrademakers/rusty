@@ -7,3 +7,5 @@ members = [
     "flaunch_ui"
 ]
 
+[profile.dev]
+opt-level = 3

@@ -39,6 +39,19 @@ pub struct ScriptStore {
     pub files: SecondaryMap<ScriptKey, String>,
 }
 
+impl ScriptStore {
+    pub fn new() -> Self {
+        ScriptStore {
+            scripts: SlotMap::with_key(),
+            names: SecondaryMap::new(),
+            description: SecondaryMap::new(),
+            arguments: SecondaryMap::new(),
+            argument_descriptions: SecondaryMap::new(),
+            files: SecondaryMap::new(),
+        }
+    }
+}
+
 #[derive(Debug)]
 enum ScriptEngineError<'a> {
     ScriptKeyDoesNotExist(ScriptKey),
@@ -72,14 +85,13 @@ pub struct ScriptEngine {
 impl ScriptEngine {
     pub fn new() -> Self {
         ScriptEngine {
-            context: ScriptStore::default(),
+            context: ScriptStore::new(),
             interpreters: HashMap::new(),
         }
     }
 
     pub fn load(&mut self, scripts_path: &str) -> Result<(), Box<dyn std::error::Error>> {
         self.load_bindings();
-
         for entry in std::fs::read_dir(scripts_path)? {
             if let Ok(valid) = entry {
                 if let Some(x) = valid.path().extension().and_then(OsStr::to_str) {

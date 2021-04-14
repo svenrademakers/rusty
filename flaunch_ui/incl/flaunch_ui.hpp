@@ -1,11 +1,22 @@
 #ifndef NANOCUI_H
 #define NANOCUI_H
+#include <cstdint>
 
 namespace ui
 {
+    enum ScriptEventType
+    {
+        New,
+        Deleted,
+        Modified
+    };
+
     void init(const char *version, const char *build_date);
     void mainloop();
-    int add_script(const char *name);
+
+    void add_script(uint64_t script_key, const char *name, void (*clicked)(uint64_t));
 }
+
+// symbols defined in rust
 
 #endif

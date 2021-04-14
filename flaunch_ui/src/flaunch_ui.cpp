@@ -1,49 +1,42 @@
 #include "nanogui/nanogui.h"
 #include <vector>
 #include <sstream>
+#include "../incl/flaunch_ui.hpp"
 using namespace nanogui;
 
 namespace ui
 {
+    class Menu : public Widget
+    {
+    public:
+        Menu(Widget *parent)
+            : Widget(parent)
+        {
+            BoxLayout *box = new BoxLayout(Orientation::Horizontal, Alignment::Minimum);
+            this->setLayout(box);
+
+            Button *btn1 = new nanogui::Button(this, "this will be a menu bar");
+            Button *btn2 = new nanogui::Button(this, "Quit");
+        }
+    };
+
     static Screen *ourScreen = nullptr;
+    static Layout *ourLayout = nullptr;
 
     void init(const char *version, const char *build_date)
     {
+        nanogui::init();
+
         std::stringstream ss;
         ss << "Flaunch - Sven Rademakers [" << version << "][" << build_date << "][devbuild]";
-        nanogui::init();
         ourScreen = new Screen(Vector2i(500, 700), ss.str());
+        ourLayout = new BoxLayout(Orientation::Vertical, Alignment::Fill);
+        ourScreen->setLayout(ourLayout);
+        new ui::Menu(ourScreen);
     }
 
     void mainloop()
     {
-        // bool enabled = true;
-        // FormHelper *gui = new FormHelper(screen);
-        // ref<Window> window = gui->addWindow(Eigen::Vector2i(10, 10), "Form helper example");
-        // gui->addGroup("Basic types");
-        // gui->addVariable("bool", bvar);
-        // gui->addVariable("string", strval);
-
-        // gui->addGroup("Validating fields");
-        // gui->addVariable("int", ivar)->setSpinnable(true);
-        // gui->addVariable("float", fvar);
-        // gui->addVariable("double", dvar)->setSpinnable(true);
-
-        // gui->addGroup("Complex types");
-        // gui->addVariable("Enumeration", enumval, enabled)
-        //     ->setItems({"Item 1", "Item 2", "Item 3"});
-        // gui->addVariable("Color", colval)
-        //     ->setFinalCallback([](const Color &c) {
-        //         std::cout << "ColorPicker Final Callback: ["
-        //                   << c.r() << ", "
-        //                   << c.g() << ", "
-        //                   << c.b() << ", "
-        //                   << c.w() << "]" << std::endl;
-        //     });
-
-        // gui->addGroup("Other widgets");
-        // gui->addButton("A button", []() { std::cout << "Button pressed." << std::endl; });
-
         ourScreen->setVisible(true);
         ourScreen->performLayout();
 
@@ -54,13 +47,16 @@ namespace ui
     struct Script
     {
         std::string name;
+        nanogui::Button *btn;
     };
 
-    static std::vector<Script>
+    static std::vector<std::pair<uint64_t, nanogui::Button *>>
         ourScripts;
 
-    int add_script(const char *name)
+    void add_script(uint64_t script_key, const char *name, void (*clicked)(uint64_t))
     {
-        new nanogui::Button(ourScreen, name);
+        ourScripts.push_back(std::make_pair(script_key, new Button(ourScreen, name)));
+        ourScripts.back().second->setCallback([script_key, &clicked] { clicked(script_key); });
     }
+
 }
