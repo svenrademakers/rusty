@@ -11,6 +11,7 @@ namespace ui
         Modified
     };
 
+    void wat(ScriptEventType wat);
     void init(const char *version, const char *build_date);
     void mainloop();
 

@@ -13,7 +13,7 @@ impl std::fmt::Display for InterpreterType {
     }
 }
 
-pub trait Interpreter {
+pub trait Interpreter: Sync + Send {
     fn parse(
         &mut self,
         filename: &Path,

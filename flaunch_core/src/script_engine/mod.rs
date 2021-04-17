@@ -29,7 +29,7 @@ pub enum Argument {
 
 new_key_type! {pub struct ScriptKey;}
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct ScriptStore {
     pub scripts: SlotMap<ScriptKey, InterpreterType>,
     pub names: SecondaryMap<ScriptKey, String>,
@@ -52,11 +52,11 @@ impl ScriptStore {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 enum ScriptEngineError<'a> {
     ScriptKeyDoesNotExist(ScriptKey),
     NoInterpreterAvailable(InterpreterType),
-    MissingArguments(Vec<&'a str>),
+    MissingArguments(Vec<&'a str>, usize),
 }
 
 impl<'a> std::fmt::Display for ScriptEngineError<'a> {
@@ -68,8 +68,8 @@ impl<'a> std::fmt::Display for ScriptEngineError<'a> {
             ScriptEngineError::NoInterpreterAvailable(x) => {
                 write!(f, "{} interpreter is not loaded.", x)
             }
-            ScriptEngineError::MissingArguments(vec) => {
-                write!(f, "missing arguments {:?}", vec)
+            ScriptEngineError::MissingArguments(vec, len) => {
+                write!(f, "missing arguments {:?} expected arguments={}", vec, len)
             }
         }
     }
@@ -143,8 +143,12 @@ impl ScriptEngine {
         script_key: &ScriptKey,
         arg_len: usize,
     ) -> Result<(), Box<dyn Error>> {
-        if arg_len != self.context.arguments.get(*script_key).unwrap().len() {
-            return Err(Box::new(ScriptEngineError::MissingArguments(Vec::new())));
+        let len = self.context.arguments.get(*script_key).unwrap().len();
+        if arg_len != len {
+            return Err(Box::new(ScriptEngineError::MissingArguments(
+                Vec::new(),
+                len,
+            )));
         }
 
         Ok(())

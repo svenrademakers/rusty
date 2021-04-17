@@ -44,7 +44,11 @@ impl<'a> PyInterpreter<'a> {
     pub fn get_arguments(py_any: &PyAny) -> Vec<Argument> {
         let mut args = Vec::new();
         for var_name in py_any.getattr("__code__").unwrap().getattr("co_varnames") {
-            args.push(Argument::String(var_name.to_string()));
+            let argument_tuple = var_name.downcast::<PyTuple>().unwrap();
+            if !argument_tuple.is_empty() {
+                let name = argument_tuple.get_item(0).to_string();
+                args.push(Argument::String(name));
+            }
         }
 
         args
@@ -98,4 +102,5 @@ impl<'a> Interpreter for PyInterpreter<'a> {
     }
 }
 
-unsafe impl<'a> std::marker::Send for PyInterpreter<'a> {}
+unsafe impl<'a> Send for PyInterpreter<'a> {}
+unsafe impl<'a> Sync for PyInterpreter<'a> {}
