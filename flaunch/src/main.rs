@@ -1,5 +1,3 @@
-use std::{env::args, sync::Arc};
-
 use flaunch_core::{logging::*, script_engine::*};
 use flaunch_core::{settings::*, *};
 use flaunch_ui::root::ui::*;
@@ -24,6 +22,11 @@ impl FLaunchApplication {
     unsafe extern "C" fn execute_script(script_key: u64) {
         if let Some(engine) = APPLICATION.get_script_engine() {
             let key = ScriptKey::from(KeyData::from_ffi(script_key));
+            if key.is_null() {
+                error!("could not parse script_key {} to actual key", script_key);
+                return;
+            }
+
             let arguments: Vec<Argument> = Vec::new();
             if let Err(e) = engine.call(key, &arguments) {
                 error!(

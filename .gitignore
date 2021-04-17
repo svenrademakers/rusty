@@ -1,3 +1,4 @@
 /target
+/extern
 node_modules
 *.log

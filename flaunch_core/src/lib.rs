@@ -1,12 +1,12 @@
+pub mod app_meta;
 pub mod logging;
 pub mod script_engine;
 pub mod settings;
-pub mod app_meta;
 
-use settings::*;
+use app_meta::*;
 use logging::*;
 use script_engine::*;
-use app_meta::*;
+use settings::*;
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum SettingKey {
@@ -37,30 +37,28 @@ pub fn app_setting_defaults() -> Vec<KeyWithDefault<SettingKey>> {
     dict
 }
 
-pub fn load_flaunch_core() -> (ScriptEngine, Settings<SettingKey>)
-{
+pub fn load_flaunch_core() -> (ScriptEngine, Settings<SettingKey>) {
     load_logging();
 
     let settings = load_settings();
     let mut script_engine = ScriptEngine::new();
-    
+
     let scripts_path = settings.get_str(SettingKey::ScriptsDir).unwrap();
     debug!("scripts path: {}", scripts_path);
 
     if std::path::Path::new(scripts_path).exists() {
         script_engine.load(scripts_path).unwrap();
-    }
-    else
-    {
-        error!("scripts path does not exits: {}", scripts_path );
+    } else {
+        error!("scripts path does not exits: {}", scripts_path);
     }
 
     (script_engine, settings)
 }
 
-fn load_logging()
-{
-    init_logging(LevelFilter::Debug).unwrap();
+fn load_logging() {
+    if let Err(e) = init_logging(LevelFilter::Debug) {
+        println!("error initialising logger! {}", e);
+    }
 
     info!("App:\t{}", APP_INFO.name);
     info!("Author: \t{}", APP_INFO.author);
@@ -68,10 +66,8 @@ fn load_logging()
     info!("--------------------------------------");
 }
 
-
 fn load_settings() -> Settings<SettingKey> {
     let mut settings = settings::Settings::new(&app_setting_defaults());
     settings.load();
     settings
 }
-
