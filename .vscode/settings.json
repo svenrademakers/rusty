@@ -2,6 +2,10 @@
     "files.associations": {
         "xstring": "cpp",
         "iosfwd": "cpp",
-        "tensor": "cpp"
+        "tensor": "cpp",
+        "array": "cpp",
+        "vector": "cpp",
+        "xutility": "cpp",
+        "alignedvector3": "cpp"
     }
 }

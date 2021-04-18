@@ -1,5 +1,4 @@
-#ifndef NANOCUI_H
-#define NANOCUI_H
+#pragma once
 #include <cstdint>
 
 namespace ui
@@ -17,7 +16,3 @@ namespace ui
 
     void add_script(uint64_t script_key, const char *name, void (*clicked)(uint64_t));
 }
-
-// symbols defined in rust
-
-#endif

@@ -1,3 +1,6 @@
 [submodule "extern/nanogui"]
 	path = extern/nanogui
 	url = git@github.com:wjakob/nanogui.git
+[submodule "extern/lodepng"]
+	path = extern/lodepng
+	url = git@github.com:lvandeve/lodepng.git
