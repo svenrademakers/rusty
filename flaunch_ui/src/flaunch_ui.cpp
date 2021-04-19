@@ -46,19 +46,19 @@ namespace ui
         ourLayout = new BoxLayout(Orientation::Vertical, Alignment::Fill);
         ourScreen->setLayout(ourLayout);
 
-        Widget *window_header = new Widget(ourScreen);
-        BoxLayout *header_layout = new BoxLayout(Orientation::Horizontal, Alignment::Fill, 0, 5);
-        window_header->setLayout(header_layout);
+        // Widget *window_header = new Widget(ourScreen);
+        // BoxLayout *header_layout = new BoxLayout(Orientation::Horizontal, Alignment::Fill, 0, 5);
+        // window_header->setLayout(header_layout);
 
-        try
-        {
-            GLuint handle = load_image("C:\\Users\\sven\\Documents\\GitHub\\rusty\\flaunch\\favicon.png");
-            ImageView *v = new ImageView(window_header, handle);
-        }
-        catch (const char *msg)
-        {
-            log_error(msg);
-        }
+        // try
+        // {
+        //     GLuint handle = load_image("C:\\Users\\sven\\Documents\\GitHub\\rusty\\flaunch\\favicon.png");
+        //     ImageView *v = new ImageView(window_header, handle);
+        // }
+        // catch (const char *msg)
+        // {
+        //     log_error(msg);
+        // }
         new ui::Menu(ourScreen);
     }
 

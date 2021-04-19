@@ -12,15 +12,25 @@ fn build_nanogui() {
     conf.profile(BUILD_TYPE);
     conf.define("NANOGUI_SHOW_WIDGET_BOUNDS", "");
     conf.build();
-    println!(
-        "cargo:rustc-link-search=native={}\\build\\{}",
-        conf.build().display(),
-        BUILD_TYPE
-    );
 
-    println!("cargo:rustc-link-search=native=C:\\Program Files (x86)\\Windows Kits\\10\\Lib\\10.0.17763.0\\um\\x64");
-    println!("cargo:rustc-link-lib=static=nanogui");
-    println!("cargo:rustc-link-lib=static=glu32");
+    if cfg!(target_family = "windows") {
+        println!(
+            "cargo:rustc-link-search=native={}\\build\\{}",
+            conf.build().display(),
+            BUILD_TYPE
+        );
+
+        println!("cargo:rustc-link-search=native=C:\\Program Files (x86)\\Windows Kits\\10\\Lib\\10.0.17763.0\\um\\x64");
+        println!("cargo:rustc-link-lib=static=glu32");
+    }
+    else if cfg!(target_family = "unix") {
+        println!(
+            "cargo:rustc-link-search=native={}/build",
+            conf.build().display()
+        );
+    }
+
+    println!("cargo:rustc-link-lib=dylib=nanogui");
 }
 
 fn build_flaunch_ui() {
@@ -28,9 +38,12 @@ fn build_flaunch_ui() {
     // includes and defines are exported from the nanogui cmake project.
     cc::Build::new()
         .file("src/flaunch_ui.cpp")
-        .file("src/image_loader.cpp")
+        //.file("src/image_loader.cpp")
         .file("../extern/lodepng/lodepng.cpp")
         .cpp(true)
+        .opt_level(3)
+        .flag_if_supported("-std=c++14")
+        .flag_if_supported("-framework GLUT -framework OpenGL")
         .include("../extern/nanogui/ext/glfw/deps")
         .include("../extern/nanogui/ext/eigen")
         .include("../extern/nanogui/ext/glfw/include")
