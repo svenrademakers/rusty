@@ -2,3 +2,4 @@
 /extern
 node_modules
 *.log
+*.lock

@@ -38,7 +38,7 @@ namespace ui
     {
         nanogui::init();
 
-        glfwWindowHint(GLFW_DECORATED, GLFW_FALSE);
+        //glfwWindowHint(GLFW_DECORATED, GLFW_FALSE);
 
         std::stringstream ss;
         ss << "Flaunch - Sven Rademakers [" << version << "][" << build_date << "][devbuild]";
