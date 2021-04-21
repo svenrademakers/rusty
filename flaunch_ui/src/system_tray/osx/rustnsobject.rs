@@ -6,7 +6,7 @@ extern crate objc;
 extern crate objc_foundation;
 extern crate objc_id;
 
-pub use ::NSCallback;
+pub use crate::system_tray::NSCallback;
 
 use std::sync::Once;
 
@@ -34,8 +34,8 @@ pub type NSObj = Box<RustWrapperClass>;
 pub type NSObjc = Id<ObjcSubclass, Shared>;
 
 pub trait NSObjCallbackTrait {
-    fn set_value(&mut self, u64, NSCallback);
-    fn get_value(&self, u64) -> &NSCallback;
+    fn set_value(&mut self, key: u64, val: NSCallback);
+    fn get_value(&self, key: u64) -> &NSCallback;
 }
 
 impl NSObjCallbackTrait for RustWrapperClass {
@@ -51,7 +51,7 @@ pub trait NSObjTrait {
     fn alloc(tx: Sender<String>) -> NSObj;
     fn selector(&self) -> Sel;
     fn take_objc(&mut self) -> NSObjc;
-    fn add_callback(&mut self, *const Object, NSCallback);
+    fn add_callback(&mut self, item : *const Object, cb : NSCallback);
 }
 
 impl NSObjTrait for NSObj {
@@ -137,7 +137,7 @@ impl INSObject for ObjcSubclass {
             }
 
             extern fn objc_url(_this: &Object, _cmd: Sel, _event: u64, _reply: u64) {
-                info!("connectr URL support not implemented yet.");
+                println!("connectr URL support not implemented yet.");
             }
 
             unsafe {

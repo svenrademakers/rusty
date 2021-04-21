@@ -5,10 +5,6 @@ pub mod osx;
 #[cfg(target_os = "windows")]
 pub mod win;
 
-#[cfg(target_os = "macos")]
-#[macro_use]
-extern crate objc;
-
 #[cfg(target_os = "linux")]
 pub type Object = u64;
 #[cfg(target_os = "windows")]

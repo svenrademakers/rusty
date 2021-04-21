@@ -7,8 +7,8 @@ extern crate cocoa;
 extern crate fruitbasket;
 use self::fruitbasket::FruitApp;
 
-pub use ::TStatusBar;
-pub use ::NSCallback;
+pub use crate::system_tray::TStatusBar;
+pub use crate::system_tray::NSCallback;
 
 use objc::runtime::Class;
 
@@ -226,7 +226,7 @@ impl TStatusBar for OSXStatusBar {
                                   andSelector: sel!(handleURLEvent:withReplyEvent:)
                                   forEventClass: 0x4755524c
                                   andEventID: 0x4755524c];
-            info!("Registered URL handler");
+            println!("Registered URL handler");
             //let cb: NSCallback = Box::new(move |_sender, _tx| {
             //    info!("URL callback");
             //});

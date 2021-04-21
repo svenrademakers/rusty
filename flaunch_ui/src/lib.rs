@@ -2,6 +2,10 @@
 #![allow(non_camel_case_types)]
 #![allow(non_snake_case)]
 
+#[cfg(target_os = "macos")]
+#[macro_use]
+extern crate objc;
+
 pub mod system_tray;
 
 #[link(name = "flaunch_ui")]

@@ -23,7 +23,7 @@ fn build_nanogui() {
         println!("cargo:rustc-link-search=native=C:\\Program Files (x86)\\Windows Kits\\10\\Lib\\10.0.17763.0\\um\\x64");
         println!("cargo:rustc-link-lib=static=glu32");
     }
-    else if cfg!(target_family = "unix") {
+    else {
         println!(
             "cargo:rustc-link-search=native={}/build",
             conf.build().display()

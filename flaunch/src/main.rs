@@ -3,6 +3,7 @@ use flaunch_core::{settings::*, *};
 use flaunch_ui::root::ui::*;
 use flaunch_ui::*;
 use script_engine::{KeyData, ScriptKey};
+use system_tray::*;
 
 static mut APPLICATION: FLaunchApplication = FLaunchApplication::new();
 
