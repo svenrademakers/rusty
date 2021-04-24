@@ -1,11 +1,4 @@
 {
-    "files.associations": {
-        "xstring": "cpp",
-        "iosfwd": "cpp",
-        "tensor": "cpp",
-        "array": "cpp",
-        "vector": "cpp",
-        "xutility": "cpp",
-        "alignedvector3": "cpp"
-    }
+    "editor.formatOnSave": true,
+    "editor.formatOnPaste": true
 }

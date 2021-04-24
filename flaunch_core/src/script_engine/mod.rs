@@ -29,6 +29,13 @@ pub enum Argument {
 
 new_key_type! {pub struct ScriptKey;}
 
+#[derive(Default, Clone, PartialEq, Debug)]
+pub struct ParseError {
+    pub filename: String,
+    pub message: String,
+    pub traceback: String,
+}
+
 #[derive(Default, Clone)]
 pub struct ScriptStore {
     pub scripts: SlotMap<ScriptKey, InterpreterType>,
@@ -37,6 +44,7 @@ pub struct ScriptStore {
     pub arguments: SecondaryMap<ScriptKey, Vec<Argument>>,
     pub argument_descriptions: SecondaryMap<ScriptKey, Vec<String>>,
     pub files: SecondaryMap<ScriptKey, String>,
+    pub parse_errors: Vec<ParseError>,
 }
 
 impl ScriptStore {
@@ -48,6 +56,7 @@ impl ScriptStore {
             arguments: SecondaryMap::new(),
             argument_descriptions: SecondaryMap::new(),
             files: SecondaryMap::new(),
+            parse_errors: Vec::new(),
         }
     }
 }

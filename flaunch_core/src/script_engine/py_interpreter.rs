@@ -27,15 +27,26 @@ impl<'a> PyInterpreter<'a> {
         contents: &str,
         filename: &str,
         module_name: &str,
+        parse_errors: &mut Vec<ParseError>,
     ) -> Vec<(String, &'a PyAny)> {
         let mut objects = Vec::new();
-        let module = PyModule::from_code(self.py, &contents, &filename, &module_name).unwrap();
-        for obj in module.dict().keys() {
-            let name = obj.str().unwrap().to_str().unwrap().to_string();
-            let obj = module.get(&name).unwrap();
+        let module = PyModule::from_code(self.py, &contents, &filename, &module_name);
 
-            if obj.is_callable() {
-                objects.push((name, obj));
+        if let Err(e) = module {
+            let error_tuple: ParseError = ParseError {
+                filename: format!("{}/{}", module_name.to_string(), filename.to_string()),
+                message: e.pvalue(self.py).to_string(),
+                traceback: e.ptraceback(self.py).to_object(self.py).to_string(),
+            };
+            parse_errors.push(error_tuple);
+        } else if let Ok(m) = module {
+            for obj in m.dict().keys() {
+                let name = obj.str().unwrap().to_str().unwrap().to_string();
+                let obj = m.get(&name).unwrap();
+
+                if obj.is_callable() {
+                    objects.push((name, obj));
+                }
             }
         }
         objects
@@ -53,30 +64,46 @@ impl<'a> PyInterpreter<'a> {
 
         args
     }
+
+    fn load_contents(
+        &mut self,
+        contents: &str,
+        path: &Path,
+        script_store: &mut ScriptStore,
+    ) -> Result<(), Box<dyn Error>> {
+        let filename = path.file_name().and_then(OsStr::to_str).unwrap();
+        let module_name = path.file_stem().and_then(OsStr::to_str).unwrap();
+
+        for (name, obj) in self.bind_to_python(
+            &contents,
+            &filename,
+            &module_name,
+            &mut script_store.parse_errors,
+        ) {
+            let key = script_store.scripts.insert(InterpreterType::Python);
+            self.callables.insert(key, obj);
+            script_store.names.insert(key, name);
+            script_store
+                .arguments
+                .insert(key, PyInterpreter::get_arguments(obj));
+            script_store
+                .files
+                .insert(key, path.to_string_lossy().to_string());
+
+            if obj.hasattr("__doc__")? {
+                let doc = obj.getattr("__doc__").unwrap().to_string();
+                script_store.description.insert(key, doc);
+            }
+        }
+
+        Ok(())
+    }
 }
 
 impl<'a> Interpreter for PyInterpreter<'a> {
     fn parse(&mut self, path: &Path, script_store: &mut ScriptStore) -> Result<(), Box<dyn Error>> {
         if let Ok(contents) = std::fs::read_to_string(path) {
-            let filename = path.file_name().and_then(OsStr::to_str).unwrap();
-            let module_name = path.file_stem().and_then(OsStr::to_str).unwrap();
-
-            for (name, obj) in self.bind_to_python(&contents, &filename, &module_name) {
-                let key = script_store.scripts.insert(InterpreterType::Python);
-                self.callables.insert(key, obj);
-                script_store.names.insert(key, name);
-                script_store
-                    .arguments
-                    .insert(key, PyInterpreter::get_arguments(obj));
-                script_store
-                    .files
-                    .insert(key, path.to_string_lossy().to_string());
-
-                if obj.hasattr("__doc__")? {
-                    let doc = obj.getattr("__doc__").unwrap().to_string();
-                    script_store.description.insert(key, doc);
-                }
-            }
+            self.load_contents(&contents, &path, script_store)?;
         }
 
         Ok(())
@@ -104,3 +131,39 @@ impl<'a> Interpreter for PyInterpreter<'a> {
 
 unsafe impl<'a> Send for PyInterpreter<'a> {}
 unsafe impl<'a> Sync for PyInterpreter<'a> {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_error_added() {
+        let mut script_store = ScriptStore::new();
+        let mut py_interpreter = PyInterpreter::new();
+        py_interpreter
+            .load_contents(
+                "adsfasdf",
+                &std::path::PathBuf::from("/my/path/sven.py"),
+                &mut script_store,
+            )
+            .unwrap();
+        assert_eq!(script_store.parse_errors[0].filename, "/my/path/sven.py");
+        assert!(!script_store.parse_errors[0].message.is_empty());
+    }
+    #[test]
+    fn parse_py_files() {
+        let mut script_store = ScriptStore::new();
+        let mut py_interpreter = PyInterpreter::new();
+        py_interpreter
+            .load_contents(
+                "def test_123(wat):\n\tprint(\"hoi\")\n",
+                &std::path::PathBuf::from("/my/path/sven.py"),
+                &mut script_store,
+            )
+            .unwrap();
+
+        let key = script_store.names.iter().next().unwrap().0;
+        assert_eq!(script_store.names[key], "test_123");
+        assert_eq!(script_store.files[key], "/my/path/sven.py");
+    }
+}
