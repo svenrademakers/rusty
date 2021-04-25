@@ -8,23 +8,23 @@ use interpreter::*;
 use py_interpreter::*;
 
 pub use slotmap::*;
-use std::boxed::Box;
-use std::collections::HashMap;
 use std::error::Error;
 use std::ffi::OsStr;
 use std::path::Path;
 use std::vec::Vec;
+use std::{any::Any, boxed::Box};
+use std::{any::TypeId, collections::HashMap};
 
 const PYTHON_EXTENSION: &str = "py";
 
-#[derive(Clone, PartialEq)]
-pub enum Argument {
-    Boolean(bool),
-    Int(i64),
-    Uint(u64),
-    Float(f64),
+#[derive(Clone, PartialEq, Debug)]
+pub enum ArgumentType {
+    Boolean(String),
+    Int(String),
+    Uint(String),
+    Float(String),
     String(String),
-    List(Box<Vec<Argument>>),
+    List(String),
 }
 
 new_key_type! {pub struct ScriptKey;}
@@ -41,7 +41,7 @@ pub struct ScriptStore {
     pub scripts: SlotMap<ScriptKey, InterpreterType>,
     pub names: SecondaryMap<ScriptKey, String>,
     pub description: SecondaryMap<ScriptKey, String>,
-    pub arguments: SecondaryMap<ScriptKey, Vec<Argument>>,
+    pub argument_type: SecondaryMap<ScriptKey, Vec<ArgumentType>>,
     pub argument_descriptions: SecondaryMap<ScriptKey, Vec<String>>,
     pub files: SecondaryMap<ScriptKey, String>,
     pub parse_errors: Vec<ParseError>,
@@ -53,7 +53,7 @@ impl ScriptStore {
             scripts: SlotMap::with_key(),
             names: SecondaryMap::new(),
             description: SecondaryMap::new(),
-            arguments: SecondaryMap::new(),
+            argument_type: SecondaryMap::new(),
             argument_descriptions: SecondaryMap::new(),
             files: SecondaryMap::new(),
             parse_errors: Vec::new(),
@@ -135,7 +135,11 @@ impl ScriptEngine {
         None
     }
 
-    pub fn call(&self, script_key: ScriptKey, args: &[Argument]) -> Result<bool, Box<dyn Error>> {
+    pub fn call(
+        &self,
+        script_key: ScriptKey,
+        args: &[Box<dyn Any>],
+    ) -> Result<bool, Box<dyn Error>> {
         let interpreter_type = self
             .context
             .scripts
@@ -152,7 +156,7 @@ impl ScriptEngine {
         script_key: &ScriptKey,
         arg_len: usize,
     ) -> Result<(), Box<dyn Error>> {
-        let len = self.context.arguments.get(*script_key).unwrap().len();
+        let len = self.context.argument_type.get(*script_key).unwrap().len();
         if arg_len != len {
             return Err(Box::new(ScriptEngineError::MissingArguments(
                 Vec::new(),

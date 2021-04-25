@@ -1,12 +1,9 @@
 extern crate clap;
 
-use flaunch_core::*;
-use flaunch_core::logging::*;
-use flaunch_core::{
-    script_engine::{Argument, ScriptEngine, ScriptStore},
-};
 use clap::{App, AppSettings, Arg, ArgMatches, SubCommand};
-
+use flaunch_core::logging::*;
+use flaunch_core::script_engine::{ScriptEngine, ScriptStore};
+use flaunch_core::*;
 
 fn main() {
     let modules = load_flaunch_core();
@@ -21,7 +18,6 @@ fn main() {
         _ => {}
     }
 }
-
 
 fn get_app_cli(scripts_path: &str) -> ArgMatches {
     App::new(app_meta::APP_INFO.name)
@@ -60,7 +56,7 @@ fn list_subcommand(script_store: ScriptStore) {
 fn run_subcommand(matches: &ArgMatches, script_engine: ScriptEngine) {
     let script_name = matches.value_of("Script Name").unwrap();
 
-    let arguments = vec![Argument::String("BAMI".to_string())];
+    let arguments: Vec<Box<dyn std::any::Any>> = vec![Box::new("BAMI".to_string())];
     if let Some(key) = script_engine.find(script_name) {
         if script_engine.call(key, &arguments).unwrap() {
             info!("Called {} successfully!", script_name);

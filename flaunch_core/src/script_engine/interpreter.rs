@@ -1,4 +1,5 @@
 use crate::script_engine::*;
+use std::any::Any;
 
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
 pub enum InterpreterType {
@@ -19,5 +20,5 @@ pub trait Interpreter: Sync + Send {
         filename: &Path,
         script_store: &mut ScriptStore,
     ) -> Result<(), Box<dyn Error>>;
-    fn call(&self, script_key: ScriptKey, args: &[Argument]) -> Result<bool, Box<dyn Error>>;
+    fn call(&self, script_key: ScriptKey, args: &[Box<dyn Any>]) -> Result<bool, Box<dyn Error>>;
 }

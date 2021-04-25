@@ -1,4 +1,5 @@
 extern crate pyo3;
+
 use crate::script_engine::interpreter::*;
 use crate::script_engine::*;
 
@@ -25,16 +26,17 @@ impl<'a> PyInterpreter<'a> {
     fn bind_to_python(
         &self,
         contents: &str,
-        filename: &str,
+        path: &Path,
         module_name: &str,
         parse_errors: &mut Vec<ParseError>,
     ) -> Vec<(String, &'a PyAny)> {
         let mut objects = Vec::new();
+        let filename = path.to_string_lossy().to_string();
         let module = PyModule::from_code(self.py, &contents, &filename, &module_name);
 
         if let Err(e) = module {
             let error_tuple: ParseError = ParseError {
-                filename: format!("{}/{}", module_name.to_string(), filename.to_string()),
+                filename: filename,
                 message: e.pvalue(self.py).to_string(),
                 traceback: e.ptraceback(self.py).to_object(self.py).to_string(),
             };
@@ -52,13 +54,13 @@ impl<'a> PyInterpreter<'a> {
         objects
     }
 
-    pub fn get_arguments(py_any: &PyAny) -> Vec<Argument> {
+    pub fn get_arguments(py_any: &PyAny) -> Vec<ArgumentType> {
         let mut args = Vec::new();
         for var_name in py_any.getattr("__code__").unwrap().getattr("co_varnames") {
             let argument_tuple = var_name.downcast::<PyTuple>().unwrap();
             if !argument_tuple.is_empty() {
                 let name = argument_tuple.get_item(0).to_string();
-                args.push(Argument::String(name));
+                args.push(ArgumentType::String(name));
             }
         }
 
@@ -71,28 +73,31 @@ impl<'a> PyInterpreter<'a> {
         path: &Path,
         script_store: &mut ScriptStore,
     ) -> Result<(), Box<dyn Error>> {
-        let filename = path.file_name().and_then(OsStr::to_str).unwrap();
         let module_name = path.file_stem().and_then(OsStr::to_str).unwrap();
-
         for (name, obj) in self.bind_to_python(
             &contents,
-            &filename,
+            &path,
             &module_name,
             &mut script_store.parse_errors,
         ) {
             let key = script_store.scripts.insert(InterpreterType::Python);
             self.callables.insert(key, obj);
             script_store.names.insert(key, name);
-            script_store
-                .arguments
-                .insert(key, PyInterpreter::get_arguments(obj));
+
+            let arguments = PyInterpreter::get_arguments(obj);
+            if !arguments.is_empty() {
+                script_store.argument_type.insert(key, arguments);
+            }
+
             script_store
                 .files
                 .insert(key, path.to_string_lossy().to_string());
 
             if obj.hasattr("__doc__")? {
                 let doc = obj.getattr("__doc__").unwrap().to_string();
-                script_store.description.insert(key, doc);
+                if doc != "None" {
+                    script_store.description.insert(key, doc);
+                }
             }
         }
 
@@ -109,20 +114,22 @@ impl<'a> Interpreter for PyInterpreter<'a> {
         Ok(())
     }
 
-    fn call(&self, script_key: ScriptKey, args: &[Argument]) -> Result<bool, Box<dyn Error>> {
+    fn call(&self, script_key: ScriptKey, args: &[Box<dyn Any>]) -> Result<bool, Box<dyn Error>> {
         if let Some(x) = self.callables.get(script_key) {
             if args.len() == 0 {
-                x.call0().unwrap();
+                x.call0()?;
             } else {
                 let mut py_arguments = Vec::new();
                 for arg in args {
-                    match arg {
-                        Argument::String(x) => py_arguments.push(x),
-                        _ => {}
+                    let typ = (&*arg).type_id();
+                    if typ == TypeId::of::<String>() {
+                        py_arguments.push(arg.downcast_ref::<String>().unwrap());
+                    } else {
+                        warn!("cannot convert one of the arguments");
                     }
                 }
                 let py_args = PyTuple::new(self.py, py_arguments);
-                x.call1(py_args).unwrap();
+                x.call1(py_args)?;
             }
         }
         Ok(true)
@@ -156,14 +163,33 @@ mod tests {
         let mut py_interpreter = PyInterpreter::new();
         py_interpreter
             .load_contents(
-                "def test_123(wat):\n\tprint(\"hoi\")\n",
+                concat!(
+                    "def test_123(wat):\n\t\"\"\"this is a test",
+                    " doc\"\"\"\n\tprint(\"hoi\")\n",
+                    "def test_2():\n\tprint(\"test2\")\n"
+                ),
                 &std::path::PathBuf::from("/my/path/sven.py"),
                 &mut script_store,
             )
             .unwrap();
-
-        let key = script_store.names.iter().next().unwrap().0;
+        let mut iter = script_store.scripts.iter();
+        let (key, typ) = iter.next().unwrap();
+        assert_eq!(typ, &InterpreterType::Python);
         assert_eq!(script_store.names[key], "test_123");
         assert_eq!(script_store.files[key], "/my/path/sven.py");
+        assert_eq!(script_store.description[key], "this is a test doc");
+        assert_eq!(
+            script_store.argument_type[key][0],
+            ArgumentType::String("wat".to_string())
+        );
+
+        let (key, typ) = iter.next().unwrap();
+        assert_eq!(typ, &InterpreterType::Python);
+        assert_eq!(script_store.names[key], "test_2");
+        assert_eq!(script_store.files[key], "/my/path/sven.py");
+        assert_eq!(script_store.description.get(key), None);
+        assert_eq!(script_store.argument_type.get(key), None);
+
+        assert_eq!(script_store.parse_errors.len(), 0);
     }
 }

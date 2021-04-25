@@ -1,3 +1,5 @@
+use std::any::Any;
+
 use flaunch_core::{logging::*, script_engine::*};
 use flaunch_core::{settings::*, *};
 use flaunch_ui::root::ui::*;
@@ -28,7 +30,7 @@ impl FLaunchApplication {
                 return;
             }
 
-            let arguments: Vec<Argument> = Vec::new();
+            let arguments: Vec<Box<dyn Any>> = Vec::new();
             if let Err(e) = engine.call(key, &arguments) {
                 error!(
                     "calling {} {} ({}-{:?}) failed. {}",
