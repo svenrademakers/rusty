@@ -1,10 +1,10 @@
-use std::any::Any;
-
 use flaunch_core::{logging::*, script_engine::*};
 use flaunch_core::{settings::*, *};
 use flaunch_ui::root::ui::*;
 use flaunch_ui::*;
 use script_engine::{KeyData, ScriptKey};
+use std::any::Any;
+use std::sync::mpsc::{self, Receiver, Sender};
 use system_tray::*;
 
 static mut APPLICATION: FLaunchApplication = FLaunchApplication::new();
@@ -46,6 +46,10 @@ impl FLaunchApplication {
         }
     }
 
+    unsafe extern "C" fn Quit() {
+        println!("quit application!");
+    }
+
     pub fn init(&mut self) {
         let modules = load_flaunch_core();
         self.scripts_engine = Some(modules.0);
@@ -82,6 +86,8 @@ impl FLaunchApplication {
 }
 
 fn main() {
+    let (tx, _rx): (Sender<String>, Receiver<String>) = mpsc::channel();
+    let _system_tray = StatusBar::new(tx, "Flaunch", "");
     unsafe {
         APPLICATION.init();
         APPLICATION.mainloop();

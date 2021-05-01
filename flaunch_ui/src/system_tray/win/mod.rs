@@ -1,12 +1,12 @@
 extern crate systray;
 
-pub use crate::system_tray::TStatusBar;
 pub use crate::system_tray::NSCallback;
+pub use crate::system_tray::TStatusBar;
 
 use self::systray::api::api::MenuEnableFlag;
 
-use std::process;
 use std::collections::BTreeMap;
+use std::process;
 use std::sync::mpsc::Sender;
 
 //pub type Object = objc::runtime::Object;
@@ -22,7 +22,7 @@ pub struct WindowsStatusBar {
 
 impl TStatusBar for WindowsStatusBar {
     type S = WindowsStatusBar;
-    fn new(tx: Sender<String>) -> WindowsStatusBar {
+    fn new(tx: Sender<String>, title: &str, icon_name: &str) -> WindowsStatusBar {
         let mut bar = WindowsStatusBar {
             app: systray::Application::new().unwrap(),
             idx: Cell::new(0),
@@ -64,29 +64,35 @@ impl TStatusBar for WindowsStatusBar {
     }
     fn add_quit(&mut self, label: &str) {
         let ref mut win = &mut self.app.window;
-        let _ = win.add_menu_item(&label.to_string(), false,
-                                  |window| {
-                                      window.quit();
-                                      process::exit(0);
-                                  });
+        let _ = win.add_menu_item(&label.to_string(), false, |window| {
+            window.quit();
+            process::exit(0);
+        });
     }
     fn add_separator(&mut self) {
         let ref mut win = &mut self.app.window;
         let _ = win.add_menu_separator();
     }
-    fn add_item(&mut self, _menu: Option<*mut Object>, item: &str, callback: NSCallback, selected: bool) -> *mut Object {
+    fn add_item(
+        &mut self,
+        _menu: Option<*mut Object>,
+        item: &str,
+        callback: NSCallback,
+        selected: bool,
+    ) -> *mut Object {
         let ref mut win = &mut self.app.window;
         let idx = self.idx.get();
-        self.idx.set(idx+1);
+        self.idx.set(idx + 1);
         let tx = self.tx.clone();
-        let item = win.add_menu_item(&item.to_string(), selected, move |_| {
-            callback(idx as u64, &tx);
-        }).unwrap();
+        let item = win
+            .add_menu_item(&item.to_string(), selected, move |_| {
+                callback(idx as u64, &tx);
+            })
+            .unwrap();
         self.items.insert(idx as u64, item);
         idx as *mut Object
     }
-    fn update_item(&mut self, _item: *mut Object, _label: &str) {
-    }
+    fn update_item(&mut self, _item: *mut Object, _label: &str) {}
     fn sel_item(&mut self, sender: u64) {
         let ref mut win = &mut self.app.window;
         let obj = self.items.get(&sender).unwrap();
@@ -97,8 +103,7 @@ impl TStatusBar for WindowsStatusBar {
         let obj = self.items.get(&sender).unwrap();
         let _ = win.unselect_menu_item(*obj);
     }
-    fn register_url_handler(&mut self) {
-    }
+    fn register_url_handler(&mut self) {}
     fn run(&mut self, block: bool) {
         let ref mut win = &mut self.app.window;
         win.wait_for_message(block);

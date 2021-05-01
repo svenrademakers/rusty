@@ -1,4 +1,3 @@
-
 #[cfg(target_os = "macos")]
 pub mod osx;
 
@@ -22,13 +21,19 @@ pub type StatusBar = win::WindowsStatusBar;
 pub type MenuItem = *mut Object;
 pub trait TStatusBar {
     type S: TStatusBar;
-    fn new(tx: Sender<String>) -> Self::S;
+    fn new(tx: Sender<String>, title: &str, icon_name: &str) -> Self::S;
     fn can_redraw(&mut self) -> bool;
     fn clear_items(&mut self);
     fn add_separator(&mut self);
     fn add_label(&mut self, label: &str);
     fn add_submenu(&mut self, label: &str, callback: NSCallback) -> *mut Object;
-    fn add_item(&mut self, menu: Option<*mut Object>,item: &str, callback: NSCallback, selected: bool) -> *mut Object;
+    fn add_item(
+        &mut self,
+        menu: Option<*mut Object>,
+        item: &str,
+        callback: NSCallback,
+        selected: bool,
+    ) -> *mut Object;
     fn add_quit(&mut self, label: &str);
     fn update_item(&mut self, item: *mut Object, label: &str);
     fn sel_item(&mut self, sender: u64);
@@ -44,13 +49,21 @@ pub type NSCallback = Box<dyn Fn(u64, &Sender<String>)>;
 pub struct DummyStatusBar {}
 impl TStatusBar for DummyStatusBar {
     type S = DummyStatusBar;
-    fn new(_: Sender<String>) -> Self::S { DummyStatusBar {} }
-    fn can_redraw(&mut self) -> bool { true }
+    fn new(tx: Sender<String>, title: &str, icon_name: &str) -> Self::S {
+        DummyStatusBar {}
+    }
+    fn can_redraw(&mut self) -> bool {
+        true
+    }
     fn clear_items(&mut self) {}
     fn add_separator(&mut self) {}
-    fn add_submenu(&mut self, _: &str, _: NSCallback) -> *mut Object { 0 as *mut Object }
+    fn add_submenu(&mut self, _: &str, _: NSCallback) -> *mut Object {
+        0 as *mut Object
+    }
     fn add_label(&mut self, _: &str) {}
-    fn add_item(&mut self, _: Option<*mut Object>, _: &str, _: NSCallback, _: bool) -> *mut Object{ 0 as *mut Object }
+    fn add_item(&mut self, _: Option<*mut Object>, _: &str, _: NSCallback, _: bool) -> *mut Object {
+        0 as *mut Object
+    }
     fn add_quit(&mut self, _: &str) {}
     fn update_item(&mut self, _: *mut Object, _: &str) {}
     fn sel_item(&mut self, _: u64) {}

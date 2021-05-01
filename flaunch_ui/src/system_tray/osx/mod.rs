@@ -1,32 +1,29 @@
 mod rustnsobject;
 
+extern crate cocoa;
 extern crate objc;
 extern crate objc_foundation;
-extern crate cocoa;
 
 extern crate fruitbasket;
 use self::fruitbasket::FruitApp;
 
-pub use crate::system_tray::TStatusBar;
 pub use crate::system_tray::NSCallback;
+pub use crate::system_tray::TStatusBar;
 
 use objc::runtime::Class;
 
-use self::cocoa::base::{nil, YES};
 use self::cocoa::appkit::NSStatusBar;
+use self::cocoa::appkit::{
+    NSButton, NSImage, NSMenu, NSMenuItem, NSStatusItem, NSVariableStatusItemLength,
+};
+use self::cocoa::base::{nil, YES};
 use self::cocoa::foundation::NSString;
-use self::cocoa::appkit::{NSMenu,
-                          NSMenuItem,
-                          NSImage,
-                          NSVariableStatusItemLength,
-                          NSStatusItem,
-                          NSButton};
 
-use self::rustnsobject::{NSObj, NSObjTrait, NSObjCallbackTrait};
+use self::rustnsobject::{NSObj, NSObjCallbackTrait, NSObjTrait};
 
-use std::sync::mpsc::Sender;
-use std::ptr;
 use std::ffi::CStr;
+use std::ptr;
+use std::sync::mpsc::Sender;
 
 pub type Object = objc::runtime::Object;
 
@@ -39,7 +36,7 @@ pub struct OSXStatusBar {
 
 impl TStatusBar for OSXStatusBar {
     type S = OSXStatusBar;
-    fn new(tx: Sender<String>) -> OSXStatusBar {
+    fn new(tx: Sender<String>, title: &str, icon_name: &str) -> OSXStatusBar {
         let mut bar;
         unsafe {
             let nsapp = FruitApp::new();
@@ -53,17 +50,16 @@ impl TStatusBar for OSXStatusBar {
             };
 
             // Default mode for menu bar items: blue highlight when selected
-            let _: () = msg_send![bar.status_bar_item, setHighlightMode:YES];
+            let _: () = msg_send![bar.status_bar_item, setHighlightMode: YES];
 
             // Set title.  Only displayed if image fails to load.
-            let title = NSString::alloc(nil).init_str("connectr");
+            let title = NSString::alloc(nil).init_str(title);
             NSButton::setTitle_(bar.status_bar_item, title);
             let _: () = msg_send![title, release];
 
             // Look for icon in OS X bundle if there is one, otherwise current dir.
             // See docs/icons.md for explanation of icon files.
             // TODO: Use the full list of search paths.
-            let icon_name = "connectr_80px_300dpi";
             let img_path = match fruitbasket::FruitApp::bundled_resource_path(icon_name, "png") {
                 Some(path) => path,
                 None => format!("{}.png", icon_name),
@@ -91,12 +87,10 @@ impl TStatusBar for OSXStatusBar {
             let _: () = msg_send![icon, release];
 
             bar.status_bar_item.setMenu_(bar.menu_bar);
-            bar.object.cb_fn = Some(Box::new(
-                move |s, sender| {
-                    let cb = s.get_value(sender);
-                    cb(sender, &s.tx);
-                }
-            ));
+            bar.object.cb_fn = Some(Box::new(move |s, sender| {
+                let cb = s.get_value(sender);
+                cb(sender, &s.tx);
+            }));
         }
         bar
     }
@@ -123,8 +117,11 @@ impl TStatusBar for OSXStatusBar {
         unsafe {
             let txt = NSString::alloc(nil).init_str(label);
             let quit_key = NSString::alloc(nil).init_str("");
-            let app_menu_item = NSMenuItem::alloc(nil)
-                .initWithTitle_action_keyEquivalent_(txt, self.object.selector(), quit_key);
+            let app_menu_item = NSMenuItem::alloc(nil).initWithTitle_action_keyEquivalent_(
+                txt,
+                self.object.selector(),
+                quit_key,
+            );
             let _: () = msg_send![txt, release];
             let _: () = msg_send![quit_key, release];
             self.menu_bar.addItem_(app_menu_item);
@@ -135,8 +132,11 @@ impl TStatusBar for OSXStatusBar {
         unsafe {
             let txt = NSString::alloc(nil).init_str(label);
             let quit_key = NSString::alloc(nil).init_str("");
-            let app_menu_item = NSMenuItem::alloc(nil)
-                .initWithTitle_action_keyEquivalent_(txt, sel!(terminate:), quit_key);
+            let app_menu_item = NSMenuItem::alloc(nil).initWithTitle_action_keyEquivalent_(
+                txt,
+                sel!(terminate:),
+                quit_key,
+            );
             let _: () = msg_send![txt, release];
             let _: () = msg_send![quit_key, release];
             self.menu_bar.addItem_(app_menu_item);
@@ -153,12 +153,21 @@ impl TStatusBar for OSXStatusBar {
     // TODO: whole API should accept menu option.  this whole thing should
     // be split out into its own recursive menu-builder trait.  this is
     // horrible.
-    fn add_item(&mut self, menu: Option<*mut Object>,item: &str, callback: NSCallback, selected: bool) -> *mut Object {
+    fn add_item(
+        &mut self,
+        menu: Option<*mut Object>,
+        item: &str,
+        callback: NSCallback,
+        selected: bool,
+    ) -> *mut Object {
         unsafe {
             let txt = NSString::alloc(nil).init_str(item);
             let quit_key = NSString::alloc(nil).init_str("");
-            let app_menu_item = NSMenuItem::alloc(nil)
-                .initWithTitle_action_keyEquivalent_(txt, self.object.selector(), quit_key);
+            let app_menu_item = NSMenuItem::alloc(nil).initWithTitle_action_keyEquivalent_(
+                txt,
+                self.object.selector(),
+                quit_key,
+            );
             let _: () = msg_send![txt, release];
             let _: () = msg_send![quit_key, release];
             self.object.add_callback(app_menu_item, callback);
@@ -169,8 +178,12 @@ impl TStatusBar for OSXStatusBar {
             }
             let item: *mut Object = app_menu_item;
             match menu {
-                Some(menu) => { menu.addItem_(app_menu_item); },
-                None => { self.menu_bar.addItem_(app_menu_item); }
+                Some(menu) => {
+                    menu.addItem_(app_menu_item);
+                }
+                None => {
+                    self.menu_bar.addItem_(app_menu_item);
+                }
             }
             let _: () = msg_send![app_menu_item, release];
             item
@@ -181,10 +194,11 @@ impl TStatusBar for OSXStatusBar {
             let submenu = NSMenu::new(nil);
             let txt = NSString::alloc(nil).init_str(label);
             let quit_key = NSString::alloc(nil).init_str("");
-            let app_menu_item = NSMenuItem::alloc(nil)
-                .initWithTitle_action_keyEquivalent_(txt,
-                                                     self.object.selector(),
-                                                     quit_key);
+            let app_menu_item = NSMenuItem::alloc(nil).initWithTitle_action_keyEquivalent_(
+                txt,
+                self.object.selector(),
+                quit_key,
+            );
             self.object.add_callback(app_menu_item, callback);
             let objc = self.object.take_objc();
             let _: () = msg_send![app_menu_item, setTarget: objc];
