@@ -11,15 +11,17 @@ fn setup_system_tray(launcher: &AppLauncher) -> StatusBar {
     let (tx, _rx): (Sender<String>, Receiver<String>) = mpsc::channel();
     let mut system_tray = launcher.build_system_tray(tx);
     let cb: NSCallback = Box::new(move |_sender, _tx| {
-        let path = format!(
-            "vscode://file/{}",
-            master_settings().to_string_lossy().to_string()
-        );
-        debug!("{}", path);
+        let path = format!("file://{}", master_settings().to_string_lossy().to_string());
+        system_uri::open(path).unwrap();
     });
     let _ = system_tray.add_item(None, "Open Config", cb, false);
     system_tray.add_separator();
-    system_tray.add_label(&format!("{}: {}", app_meta::APP_NAME, app_meta::BUILD_DATE));
+    system_tray.add_label(&format!(
+        "{} {}[{}]",
+        app_meta::APP_NAME,
+        app_meta::BUILD_DATE,
+        app_meta::VERSION
+    ));
     system_tray.add_quit("Quit");
     system_tray
 }

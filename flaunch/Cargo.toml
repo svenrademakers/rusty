@@ -7,6 +7,10 @@ edition = "2018"
 [dependencies]
 flaunch_core = { path = "../flaunch_core" }
 
+[dependencies.system_uri]
+version = "*"
+default-features = false
+
 [build-dependencies]
 cmake ="*"
 bindgen = "*"

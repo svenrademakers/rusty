@@ -8,6 +8,7 @@ edition = "2018"
 log = "*"
 json = "*"
 slotmap="*"
+bus= "*"
 app_dirs = { package = "app_dirs2", version = "*" }
 
 [build-dependencies]

@@ -1,3 +1,5 @@
+#![allow(unused_variables)]
+
 #[cfg(target_os = "macos")]
 pub mod osx;
 
@@ -18,7 +20,6 @@ pub type StatusBar = osx::OSXStatusBar;
 #[cfg(target_os = "windows")]
 pub type StatusBar = win::WindowsStatusBar;
 
-pub type MenuItem = *mut Object;
 pub trait TStatusBar {
     type S: TStatusBar;
     fn new(tx: Sender<String>, title: &str, icon_name: &str) -> Self::S;
