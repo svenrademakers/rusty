@@ -10,6 +10,10 @@ json = "*"
 slotmap="*"
 app_dirs = { package = "app_dirs2", version = "*" }
 
+[build-dependencies]
+git = { package = "git2", version= "*"}
+regex = "*"
+chrono = "*"
 
 [dependencies.pyo3]
 version = "0.13.2"

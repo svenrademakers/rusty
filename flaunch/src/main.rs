@@ -1,95 +1,44 @@
-use flaunch_core::{logging::*, script_engine::*};
-use flaunch_core::{settings::*, *};
-use flaunch_ui::root::ui::*;
-use flaunch_ui::*;
-use script_engine::{KeyData, ScriptKey};
-use std::any::Any;
-use std::sync::mpsc::{self, Receiver, Sender};
+mod app_launcher;
+mod system_tray;
+use app_launcher::*;
+use flaunch_core::settings::*;
+use flaunch_core::{load_flaunch_core, logging::*};
 use system_tray::*;
+// static mut APPLICATION_BUILDER: FLaunchApplication = FLaunchApplication::new("Flaunch");
 
-static mut APPLICATION: FLaunchApplication = FLaunchApplication::new();
-
-struct FLaunchApplication {
-    scripts_engine: Option<ScriptEngine>,
-    settings: Option<Settings<SettingKey>>,
-}
-
-impl FLaunchApplication {
-    pub const fn new() -> Self {
-        FLaunchApplication {
-            scripts_engine: None,
-            settings: None,
-        }
-    }
-
-    unsafe extern "C" fn execute_script(script_key: u64) {
-        if let Some(engine) = APPLICATION.get_script_engine() {
-            let key = ScriptKey::from(KeyData::from_ffi(script_key));
-            if key.is_null() {
-                error!("could not parse script_key {} to actual key", script_key);
-                return;
-            }
-
-            let arguments: Vec<Box<dyn Any>> = Vec::new();
-            if let Err(e) = engine.call(key, &arguments) {
-                error!(
-                    "calling {} {} ({}-{:?}) failed. {}",
-                    engine.context.scripts[key].to_string().to_lowercase(),
-                    engine.context.names[key],
-                    script_key,
-                    key,
-                    e
-                );
-            } else {
-                info!("successfully called {}", engine.context.names[key])
-            }
-        }
-    }
-
-    unsafe extern "C" fn Quit() {
-        println!("quit application!");
-    }
-
-    pub fn init(&mut self) {
-        let modules = load_flaunch_core();
-        self.scripts_engine = Some(modules.0);
-        self.settings = Some(modules.1);
-
-        unsafe {
-            init(
-                to_c_char(app_meta::VERSION),
-                to_c_char(app_meta::BUILD_DATE),
-            );
-
-            if let Some(engine) = &self.scripts_engine {
-                for script in &engine.context.scripts {
-                    add_script(
-                        script.0.data().as_ffi(),
-                        to_c_char(&engine.context.names[script.0]),
-                        Some(FLaunchApplication::execute_script),
-                    );
-                }
-            }
-        }
-    }
-
-    pub fn mainloop(&mut self) {
-        unsafe {
-            debug!("starting mainloop.");
-            mainloop();
-        }
-    }
-
-    pub fn get_script_engine(&self) -> &Option<ScriptEngine> {
-        &self.scripts_engine
-    }
-}
+// // fn get_bundle_url() -> String {
+// //     let uritypes = "<key>CFBundleURLTypes</key>
+// // 	<array>
+// // 		<dict>
+// // 			<key>CFBundleURLName</key>
+// // 			<string>Visual Studio URI Handler for vscode:// URIs</string>
+// // 			<key>CFBundleURLSchemes</key>
+// // 			<array>
+// // 				<string>vscode</string>
+// // 			</array>
+// // 		</dict>
+// // 	</array>".to_string()
+// // }
 
 fn main() {
-    let (tx, _rx): (Sender<String>, Receiver<String>) = mpsc::channel();
-    let _system_tray = StatusBar::new(tx, "Flaunch", "");
-    unsafe {
-        APPLICATION.init();
-        APPLICATION.mainloop();
-    }
+    let (script_engine, settings) = load_flaunch_core();
+
+    let mut launcher = AppLauncher::new();
+    launcher.build();
+    let mut system_tray = launcher.build_system_tray();
+
+    let cb: NSCallback = Box::new(move |_sender, _tx| {
+        let path = format!(
+            "vscode://file/{}",
+            master_settings().to_string_lossy().to_string()
+        );
+        //let res = libc::open(path.as_ptr() as *mut c_char, 1);
+        debug!("{}", path);
+    });
+    let _ = system_tray.add_item(None, "Open Config", cb, false);
+    system_tray.add_separator();
+    system_tray.add_label("goed verhaal");
+    system_tray.add_quit("Quit");
+
+    launcher.run();
 }

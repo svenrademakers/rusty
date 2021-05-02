@@ -26,10 +26,9 @@ use std::ptr;
 use std::sync::mpsc::Sender;
 
 pub type Object = objc::runtime::Object;
-
+use objc::*;
 pub struct OSXStatusBar {
     object: NSObj,
-    app: FruitApp,
     status_bar_item: *mut objc::runtime::Object,
     menu_bar: *mut objc::runtime::Object,
 }
@@ -39,18 +38,15 @@ impl TStatusBar for OSXStatusBar {
     fn new(tx: Sender<String>, title: &str, icon_name: &str) -> OSXStatusBar {
         let mut bar;
         unsafe {
-            let nsapp = FruitApp::new();
-            nsapp.set_activation_policy(fruitbasket::ActivationPolicy::Prohibited);
             let status_bar = NSStatusBar::systemStatusBar(nil);
             bar = OSXStatusBar {
-                app: nsapp,
                 status_bar_item: status_bar.statusItemWithLength_(NSVariableStatusItemLength),
                 menu_bar: NSMenu::new(nil),
                 object: NSObj::alloc(tx),
             };
 
             // Default mode for menu bar items: blue highlight when selected
-            let _: () = msg_send![bar.status_bar_item, setHighlightMode: YES];
+            let _: () = objc::msg_send![bar.status_bar_item, setHighlightMode: YES];
 
             // Set title.  Only displayed if image fails to load.
             let title = NSString::alloc(nil).init_str(title);
@@ -247,13 +243,7 @@ impl TStatusBar for OSXStatusBar {
             //self.object.add_callback(objc, cb);
         }
     }
-    fn run(&mut self, block: bool) {
-        let period = match block {
-            true => fruitbasket::RunPeriod::Forever,
-            _ => fruitbasket::RunPeriod::Once,
-        };
-        let _ = self.app.run(period);
-    }
+    fn run(&mut self, block: bool) {}
 }
 
 //pub fn osx_alert(text: &str) {

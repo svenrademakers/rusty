@@ -9,8 +9,3 @@ flaunch_core = { path = "../flaunch_core" }
 app_dirs = { package = "app_dirs2", version = "*" }
 notify = "*"
 clap ="*"
-
-[build-dependencies]
-git = { package = "git2", version= "*"}
-regex = "*"
-chrono = "*"

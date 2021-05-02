@@ -6,5 +6,7 @@ pub const APP_INFO: AppInfo = AppInfo {
     author: "sven",
 };
 
-pub const VERSION: &str = "909bd1d";
-pub const BUILD_DATE: &str = "8-2-2021";
+pub const APP_NAME: &str = "Flaunch";
+pub const VERSION: &str = "eaa287c";
+pub const BUILD_DATE: &str = "2-5-2021";
+pub const ICON: &str = "favicon.png";
