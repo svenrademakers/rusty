@@ -3,31 +3,37 @@ use crate::app_meta;
 use crate::logging;
 pub use json::JsonValue;
 
+use bus::{Bus, BusReader};
 use logging::*;
-use std::cmp::Eq;
-use std::collections::HashMap;
 use std::hash::Hash;
 use std::marker::Copy;
+use std::{cmp::Eq, collections::HashMap};
 
 pub type KeyWithDefault<Key> = (Key, &'static str, JsonValue);
 pub type SettingsReloaded<T> = dyn Fn(&T);
 
 pub struct Settings<Key>
 where
-    Key: Eq + Hash + Copy,
+    Key: Eq + Hash + Copy + Clone,
 {
+    /// actual map with settings. value should always contain
+    /// a valid value. on load value is insterted with a default
+    // value.
     settings: HashMap<Key, JsonValue>,
+    /// mapping from textual json key to rust enum key
     mapping: HashMap<&'static str, Key>,
+    bus: Bus<Key>,
 }
 
 impl<Key> Settings<Key>
 where
-    Key: Eq + Hash + Copy,
+    Key: Eq + Hash + Copy + Clone,
 {
     pub fn new(key_mapping: &[KeyWithDefault<Key>]) -> Self {
         let mut set = Settings::<Key> {
             settings: HashMap::new(),
             mapping: HashMap::new(),
+            bus: Bus::new(30),
         };
 
         for (key, json_key, default) in key_mapping {
@@ -49,17 +55,22 @@ where
         std::fs::remove_file(master_settings()).unwrap();
     }
 
-    // pub fn set_str(&mut self, setting: Key, value: String) {
-    //     self.settings[&setting] = json::JsonValue::String(value);
-    // }
+    pub fn set_str(&mut self, setting: Key, value: String) {
+        if let Some(val) = self.settings.get_mut(&setting) {
+            if val.is_string() {
+                *val = json::JsonValue::String(value);
+                self.bus.broadcast(setting);
+            }
+        }
+    }
 
     pub fn get_str(&self, setting: Key) -> Option<&str> {
         self.settings.get(&setting).map(|x| x.as_str())?
     }
 
-    // pub fn on_config_reload(&mut self, callback: &'a SettingsReloaded<Key>) {
-    //     self.observers.push(callback);
-    // }
+    pub fn get_receiver(&mut self) -> BusReader<Key> {
+        self.bus.add_rx()
+    }
 
     fn from_json(&mut self, settings_file: &str) {
         if let Ok(contents) = std::fs::read_to_string(settings_file) {
