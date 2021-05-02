@@ -38,8 +38,6 @@ pub fn app_setting_defaults() -> Vec<KeyWithDefault<SettingKey>> {
 }
 
 pub fn load_flaunch_core() -> (ScriptEngine, Settings<SettingKey>) {
-    load_logging();
-
     let settings = load_settings();
     let mut script_engine = ScriptEngine::new();
 
@@ -55,7 +53,7 @@ pub fn load_flaunch_core() -> (ScriptEngine, Settings<SettingKey>) {
     (script_engine, settings)
 }
 
-fn load_logging() {
+pub fn load_logging() {
     if let Err(e) = init_logging(LevelFilter::Debug) {
         println!("error initialising logger! {}", e);
     }

@@ -243,7 +243,13 @@ impl TStatusBar for OSXStatusBar {
             //self.object.add_callback(objc, cb);
         }
     }
-    fn run(&mut self, block: bool) {}
+    fn run(&mut self, block: bool) {
+        let period = match block {
+            true => fruitbasket::RunPeriod::Forever,
+            _ => fruitbasket::RunPeriod::Once,
+        };
+        let _ = self.app.run(period);
+    }
 }
 
 //pub fn osx_alert(text: &str) {

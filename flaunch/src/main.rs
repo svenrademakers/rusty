@@ -1,44 +1,34 @@
 mod app_launcher;
 mod system_tray;
+use std::sync::mpsc::{self, Receiver, Sender};
+
 use app_launcher::*;
-use flaunch_core::settings::*;
-use flaunch_core::{load_flaunch_core, logging::*};
+use flaunch_core::{app_meta, load_flaunch_core, logging::*};
+use flaunch_core::{load_logging, settings::*};
 use system_tray::*;
-// static mut APPLICATION_BUILDER: FLaunchApplication = FLaunchApplication::new("Flaunch");
 
-// // fn get_bundle_url() -> String {
-// //     let uritypes = "<key>CFBundleURLTypes</key>
-// // 	<array>
-// // 		<dict>
-// // 			<key>CFBundleURLName</key>
-// // 			<string>Visual Studio URI Handler for vscode:// URIs</string>
-// // 			<key>CFBundleURLSchemes</key>
-// // 			<array>
-// // 				<string>vscode</string>
-// // 			</array>
-// // 		</dict>
-// // 	</array>".to_string()
-// // }
-
-fn main() {
-    let (script_engine, settings) = load_flaunch_core();
-
-    let mut launcher = AppLauncher::new();
-    launcher.build();
-    let mut system_tray = launcher.build_system_tray();
-
+fn setup_system_tray(launcher: &AppLauncher) -> StatusBar {
+    let (tx, _rx): (Sender<String>, Receiver<String>) = mpsc::channel();
+    let mut system_tray = launcher.build_system_tray(tx);
     let cb: NSCallback = Box::new(move |_sender, _tx| {
         let path = format!(
             "vscode://file/{}",
             master_settings().to_string_lossy().to_string()
         );
-        //let res = libc::open(path.as_ptr() as *mut c_char, 1);
         debug!("{}", path);
     });
     let _ = system_tray.add_item(None, "Open Config", cb, false);
     system_tray.add_separator();
-    system_tray.add_label("goed verhaal");
+    system_tray.add_label(&format!("{}: {}", app_meta::APP_NAME, app_meta::BUILD_DATE));
     system_tray.add_quit("Quit");
+    system_tray
+}
 
-    launcher.run();
+fn main() {
+    load_logging();
+    let launcher = AppLauncher::new();
+    let mut system_tray = setup_system_tray(&launcher);
+    system_tray.run(true);
+
+    let (script_engine, settings) = load_flaunch_core();
 }
