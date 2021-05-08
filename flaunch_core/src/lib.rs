@@ -37,22 +37,6 @@ pub fn app_setting_defaults() -> Vec<KeyWithDefault<SettingKey>> {
     dict
 }
 
-pub fn load_flaunch_core() -> (ScriptEngine, Settings<SettingKey>) {
-    let settings = load_settings();
-    let mut script_engine = ScriptEngine::new();
-
-    let scripts_path = settings.get_str(SettingKey::ScriptsDir).unwrap();
-    debug!("scripts path: {}", scripts_path);
-
-    if std::path::Path::new(scripts_path).exists() {
-        script_engine.load(scripts_path).unwrap();
-    } else {
-        error!("scripts path does not exits: {}", scripts_path);
-    }
-
-    (script_engine, settings)
-}
-
 pub fn load_logging() {
     if let Err(e) = init_logging(LevelFilter::Debug) {
         println!("error initialising logger! {}", e);
@@ -64,7 +48,7 @@ pub fn load_logging() {
     info!("--------------------------------------");
 }
 
-fn load_settings() -> Settings<SettingKey> {
+pub fn load_settings() -> Settings<SettingKey> {
     let mut settings = settings::Settings::new(&app_setting_defaults());
     settings.load();
     settings

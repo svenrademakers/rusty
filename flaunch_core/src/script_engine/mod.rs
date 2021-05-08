@@ -1,4 +1,3 @@
-extern crate slotmap;
 mod interpreter;
 mod py_interpreter;
 
@@ -6,14 +5,19 @@ use crate::logging::*;
 
 use interpreter::*;
 use py_interpreter::*;
+use std::{sync::mpsc::Receiver, time::Duration};
+use threadpool::ThreadPool;
 
 pub use slotmap::*;
-use std::error::Error;
-use std::ffi::OsStr;
 use std::path::Path;
-use std::vec::Vec;
-use std::{any::Any, boxed::Box};
-use std::{any::TypeId, collections::HashMap};
+use std::{
+    any::Any,
+    boxed::Box,
+    ffi::OsString,
+    fs::DirEntry,
+    sync::{mpsc::channel, Arc, Mutex},
+};
+use std::{path::PathBuf, vec::Vec};
 
 const PYTHON_EXTENSION: &str = "py";
 
@@ -29,6 +33,28 @@ pub enum ArgumentType {
 
 new_key_type! {pub struct ScriptKey;}
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum InterpreterError {
+    Error,
+}
+
+impl std::fmt::Display for InterpreterError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            InterpreterError::Error => write!(f, "Not good!"),
+        }
+    }
+}
+#[derive(Debug, Clone, PartialEq)]
+pub enum ScriptEngineError {
+    ScriptKeyDoesNotExist(ScriptKey),
+    InterpreterNotAvailable(OsString),
+    MissingArguments(Vec<String>, usize),
+    NoScriptsFound(PathBuf),
+    InterpretError(InterpreterError),
+    PoisonedMutex(String),
+    ErrorMessage(String),
+}
 #[derive(Default, Clone, PartialEq, Debug)]
 pub struct ParseError {
     pub filename: String,
@@ -36,98 +62,138 @@ pub struct ParseError {
     pub traceback: String,
 }
 
-#[derive(Default, Clone)]
-pub struct ScriptStore {
-    pub scripts: SlotMap<ScriptKey, InterpreterType>,
-    pub names: SecondaryMap<ScriptKey, String>,
-    pub description: SecondaryMap<ScriptKey, String>,
-    pub argument_type: SecondaryMap<ScriptKey, Vec<ArgumentType>>,
-    pub argument_descriptions: SecondaryMap<ScriptKey, Vec<String>>,
-    pub files: SecondaryMap<ScriptKey, String>,
-    pub parse_errors: Vec<ParseError>,
+impl<'a> std::fmt::Display for ScriptEngineError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ScriptEngineError::ScriptKeyDoesNotExist(key) => {
+                write!(f, "{:?} does not exist.", key)
+            }
+            ScriptEngineError::InterpreterNotAvailable(x) => {
+                write!(f, "no interpreter to load type {:?}.", x)
+            }
+            ScriptEngineError::MissingArguments(vec, len) => {
+                write!(f, "missing arguments {:?} expected arguments={}", vec, len)
+            }
+            ScriptEngineError::NoScriptsFound(directory) => {
+                write!(f, "no scripts found in {}", directory.to_string_lossy())
+            }
+            ScriptEngineError::InterpretError(error) => {
+                write!(f, "{}", error)
+            }
+            ScriptEngineError::PoisonedMutex(e) => {
+                write!(f, "{}", e)
+            }
+            ScriptEngineError::ErrorMessage(e) => {
+                write!(f, "{}", e)
+            }
+        }
+    }
 }
 
-impl ScriptStore {
+impl<'a> std::error::Error for ScriptEngineError {}
+
+pub struct ScriptEngine {
+    scripts: SlotMap<ScriptKey, InterpreterArc>,
+    names: SecondaryMap<ScriptKey, String>,
+    description: SecondaryMap<ScriptKey, String>,
+    argument_type: SecondaryMap<ScriptKey, Vec<ArgumentType>>,
+    argument_descriptions: SecondaryMap<ScriptKey, Vec<String>>,
+    files: SecondaryMap<ScriptKey, PathBuf>,
+}
+
+impl ScriptEngine {
     pub fn new() -> Self {
-        ScriptStore {
+        ScriptEngine {
             scripts: SlotMap::with_key(),
             names: SecondaryMap::new(),
             description: SecondaryMap::new(),
             argument_type: SecondaryMap::new(),
             argument_descriptions: SecondaryMap::new(),
             files: SecondaryMap::new(),
-            parse_errors: Vec::new(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-enum ScriptEngineError<'a> {
-    ScriptKeyDoesNotExist(ScriptKey),
-    NoInterpreterAvailable(InterpreterType),
-    MissingArguments(Vec<&'a str>, usize),
-}
-
-impl<'a> std::fmt::Display for ScriptEngineError<'a> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ScriptEngineError::ScriptKeyDoesNotExist(key) => {
-                write!(f, "{:?} does not exist.", key)
-            }
-            ScriptEngineError::NoInterpreterAvailable(x) => {
-                write!(f, "{} interpreter is not loaded.", x)
-            }
-            ScriptEngineError::MissingArguments(vec, len) => {
-                write!(f, "missing arguments {:?} expected arguments={}", vec, len)
-            }
-        }
-    }
-}
-
-impl<'a> std::error::Error for ScriptEngineError<'a> {}
-
-pub struct ScriptEngine {
-    pub context: ScriptStore,
-    interpreters: HashMap<InterpreterType, Box<dyn Interpreter + std::marker::Send>>,
-}
-
-impl ScriptEngine {
-    pub fn new() -> Self {
-        ScriptEngine {
-            context: ScriptStore::new(),
-            interpreters: HashMap::new(),
         }
     }
 
-    pub fn load(&mut self, scripts_path: &str) -> Result<(), Box<dyn std::error::Error>> {
-        self.load_bindings();
-        for entry in std::fs::read_dir(scripts_path)? {
-            if let Ok(valid) = entry {
-                if let Some(x) = valid.path().extension().and_then(OsStr::to_str) {
-                    match x {
-                        PYTHON_EXTENSION => {
-                            self.interpreters
-                                .get_mut(&InterpreterType::Python)
-                                .unwrap()
-                                .parse(&valid.path(), &mut self.context)?;
-                        }
-                        _ => {
-                            debug!("skip {:?} for parsing", valid.path());
-                        }
-                    }
-                }
-            } else {
-                warn!("Skipping loading of {:?}", entry);
+    fn pool_is_busy(pool: &ThreadPool) -> bool {
+        pool.active_count() > 0 && pool.queued_count() > 0
+    }
+
+    fn receive_parse_res_or_print(
+        recv: &Receiver<Result<(usize, InterpreterArc), ScriptEngineError>>,
+    ) -> Result<(usize, InterpreterArc), ScriptEngineError> {
+        let recv_res = recv.recv_timeout(Duration::from_secs(3));
+        match recv_res {
+            Ok(parse_result) => parse_result,
+            Err(e) => {
+                error!("{}", e);
+                Err(ScriptEngineError::ErrorMessage("".to_string()))
+            }
+        }
+    }
+
+    pub fn load(&mut self, scripts_path: &Path) -> Result<Vec<ParseError>, ScriptEngineError> {
+        let pool = ThreadPool::new(8);
+
+        let files = get_files_of_dir(scripts_path)?;
+        let rx_parse = fun_name(&files, &pool);
+
+        let mut received_parse = 0;
+        let (tx_load, rx_load) = channel();
+        while ScriptEngine::pool_is_busy(&pool) && received_parse < files.len() {
+            let result = ScriptEngine::receive_parse_res_or_print(&rx_parse);
+
+            if let Ok((count, interpreter)) = result {
+                let keys = self.get_script_keys(count, interpreter.clone());
+                let tx_load = tx_load.clone();
+                pool.execute(move || {
+                    let result = interpreter::load(interpreter, &keys);
+                    tx_load.send(result).unwrap();
+                });
+            }
+            received_parse += 1;
+        }
+
+        pool.join();
+
+        let mut errors: Vec<ParseError> = Vec::new();
+        for result in rx_load.recv().iter() {
+            if let Err(e) = result {
+                error!("{}", e);
+                continue;
+            }
+
+            let (scripts, parse_errors) = result.as_ref().unwrap();
+            errors.extend(parse_errors.clone());
+
+            for script in scripts {
+                self.names.insert(script.key, script.name.clone());
+                self.description
+                    .insert(script.key, script.description.clone());
+                self.argument_type
+                    .insert(script.key, script.argument_type.clone());
+                self.argument_descriptions
+                    .insert(script.key, script.argument_descriptions.clone());
+                self.files.insert(script.key, scripts_path.to_path_buf());
             }
         }
 
-        Ok(())
+        Ok(errors)
+    }
+
+    fn get_script_keys(&mut self, result: usize, interpreter: InterpreterArc) -> Vec<ScriptKey> {
+        let mut keys = Vec::new();
+
+        for _ in 0..(result as i32) {
+            let key = self.scripts.insert(interpreter.clone());
+            keys.push(key);
+        }
+
+        keys
     }
 
     /// find key for given name.
     /// O(n)
     pub fn find(&self, name: &str) -> Option<ScriptKey> {
-        for k in &self.context.names {
+        for k in &self.names {
             if k.1 == name {
                 return Some(k.0);
             }
@@ -139,48 +205,69 @@ impl ScriptEngine {
         &self,
         script_key: ScriptKey,
         args: &[Box<dyn Any>],
-    ) -> Result<bool, Box<dyn Error>> {
-        let interpreter_type = self
-            .context
-            .scripts
-            .get(script_key)
-            .ok_or(ScriptEngineError::ScriptKeyDoesNotExist(script_key))?;
+    ) -> Result<bool, ScriptEngineError> {
+        //     let interpreter = self
+        //         .scripts
+        //         .get(script_key)
+        //         .ok_or(ScriptEngineError::ScriptKeyDoesNotExist(script_key))?
+        //         .clone();
 
-        self.return_on_invalid_arguments(&script_key, args.len())?;
-        self.get_interpreter(*interpreter_type)?
-            .call(script_key, args)
+        // self.return_on_invalid_arguments(&script_key, args.len())?;
+        // self.get_interpreter(interpreter_type)?
+        //     .call(script_key, args)
+        Ok(false)
     }
 
-    fn return_on_invalid_arguments(
-        &self,
-        script_key: &ScriptKey,
-        arg_len: usize,
-    ) -> Result<(), Box<dyn Error>> {
-        let len = self.context.argument_type.get(*script_key).unwrap().len();
-        if arg_len != len {
-            return Err(Box::new(ScriptEngineError::MissingArguments(
-                Vec::new(),
-                len,
-            )));
+    // fn return_on_invalid_arguments(
+    //     &self,
+    //     script_key: &ScriptKey,
+    //     arg_len: usize,
+    // ) -> Result<(), Box<dyn Error>> {
+    //     let len = self.argument_type.get(*script_key).unwrap().len();
+    //     if arg_len != len {
+    //         return Err(Box::new(ScriptEngineError::MissingArguments(
+    //             Vec::new(),
+    //             len,
+    //         )));
+    //     }
+
+    //     Ok(())
+    // }
+}
+
+fn parse_files(
+    files: &Vec<PathBuf>,
+    pool: &ThreadPool,
+) -> Receiver<Result<(usize, Arc<Mutex<dyn Interpreter + Send>>), ScriptEngineError>> {
+    let (tx_parse, rx_parse) = channel();
+    for i in 0..files.len() {
+        let tx_parse = tx_parse.clone();
+        let file = files.get(i).unwrap().clone();
+
+        pool.execute(move || {
+            let result =
+                get_interpreter_for_file(&file).and_then(interpreter::parse_and_interpreter);
+            tx_parse.send(result).unwrap();
+        });
+    }
+    rx_parse
+}
+
+fn get_files_of_dir(dir: &Path) -> Result<Vec<PathBuf>, ScriptEngineError> {
+    let filter = |d: std::io::Result<DirEntry>| match d {
+        Ok(entry) => Some(entry.path()),
+        Err(e) => {
+            error!("{}", e);
+            None
         }
+    };
 
-        Ok(())
-    }
-
-    fn load_bindings(&mut self) {
-        self.interpreters
-            .insert(InterpreterType::Python, Box::new(PyInterpreter::new()));
-    }
-
-    fn get_interpreter(
-        &self,
-        interpreter_type: InterpreterType,
-    ) -> Result<&Box<dyn Interpreter + std::marker::Send>, Box<dyn Error>> {
-        match self.interpreters.get(&interpreter_type) {
-            Some(x) => Ok(x),
-            None => Err(Box::new(ScriptEngineError::NoInterpreterAvailable(
-                interpreter_type,
-            ))),
+    let res = std::fs::read_dir(dir);
+    match res {
+        Err(x) => {
+            error!("failed to get files in dir {:?} {}", dir, x);
+            return Err(ScriptEngineError::NoScriptsFound(dir.to_path_buf()));
         }
+        Ok(dir) => Ok(dir.filter_map(filter).collect()),
     }
 }
