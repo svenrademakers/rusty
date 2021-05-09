@@ -1,5 +1,7 @@
 extern crate pyo3;
 
+use std::{any::TypeId, ffi::OsStr};
+
 use crate::script_engine::interpreter::*;
 use crate::script_engine::*;
 
@@ -13,6 +15,7 @@ pub struct PyInterpreter<'a> {
     _gil: GILGuard,
     py: Python<'a>,
     file: PathBuf,
+    pending: Vec<(String, &'a PyAny)>,
 }
 
 impl<'a> PyInterpreter<'a> {
@@ -22,130 +25,113 @@ impl<'a> PyInterpreter<'a> {
             _gil: Python::acquire_gil(),
             py: unsafe { Python::assume_gil_acquired() },
             file: file.to_path_buf(),
+            pending: Vec::new(),
         }
     }
 
-    // fn load_contents(
-    //     &mut self,
-    //     contents: &str,
-    //     path: &str,
-    // ) -> Result<(Vec<Script>, Vec<ParseError>), Box<dyn Error>> {
-    //     let module_name = path.file_stem().and_then(OsStr::to_str).unwrap();
-    //     let (objects, errors) = self.bind_to_python(&contents, &path, &module_name);
-    //     let mut scripts = Vec::new();
-    //     for (name, obj) in objects {
-    //         let mut script = authority.request_script_entry(InterpreterType::Python);
-    //         self.callables.insert(script.get_key(), obj);
-    //         script.name = name;
+    fn parse_contents(&mut self, contents: &str) -> Vec<ParseError> {
+        let filename = self.file.to_string_lossy().to_string();
+        let module_name: &str = self.file.file_stem().and_then(OsStr::to_str).unwrap();
+        let module = PyModule::from_code(self.py, &contents, &filename, &module_name);
+        let mut errors = Vec::new();
 
-    //         let arguments = PyInterpreter::get_arguments(obj);
-    //         if !arguments.is_empty() {
-    //             script.argument_type = arguments;
-    //         }
+        if let Err(e) = module {
+            let error_tuple: ParseError = ParseError {
+                filename: filename,
+                message: e.pvalue(self.py).to_string(),
+                traceback: e.ptraceback(self.py).to_object(self.py).to_string(),
+            };
+            errors.push(error_tuple);
+        } else if let Ok(m) = module {
+            for obj in m.dict().keys() {
+                let name = obj.str().unwrap().to_str().unwrap().to_string();
+                let obj = m.get(&name).unwrap();
 
-    //         script.file = path.to_string_lossy().to_string();
+                if obj.is_callable() {
+                    self.pending.push((name, obj));
+                }
+            }
+        }
+        errors
+    }
 
-    //         if obj.hasattr("__doc__")? {
-    //             let doc = obj.getattr("__doc__").unwrap().to_string();
-    //             if doc != "None" {
-    //                 script.description = doc;
-    //             }
-    //         }
+    fn get_arguments(py_any: &PyAny) -> Vec<ArgumentType> {
+        let mut args = Vec::new();
+        for var_name in py_any.getattr("__code__").unwrap().getattr("co_varnames") {
+            let argument_tuple = var_name.downcast::<PyTuple>().unwrap();
+            if !argument_tuple.is_empty() {
+                let name = argument_tuple.get_item(0).to_string();
+                args.push(ArgumentType::String(name));
+            }
+        }
 
-    //         scripts.push(script);
-    //     }
-
-    //     Ok((scripts, errors))
-    // }
-
-    // fn bind_to_python(
-    //     &self,
-    //     contents: &str,
-    //     path: &Path,
-    //     module_name: &str,
-    // ) -> (Vec<(String, &'a PyAny)>, Vec<ParseError>) {
-    //     let mut objects = Vec::new();
-    //     let mut errors = Vec::new();
-    //     let filename = path.to_string_lossy().to_string();
-    //     let module = PyModule::from_code(self.py, &contents, &filename, &module_name);
-
-    //     if let Err(e) = module {
-    //         let error_tuple: ParseError = ParseError {
-    //             filename: filename,
-    //             message: e.pvalue(self.py).to_string(),
-    //             traceback: e.ptraceback(self.py).to_object(self.py).to_string(),
-    //         };
-    //         errors.push(error_tuple);
-    //     } else if let Ok(m) = module {
-    //         for obj in m.dict().keys() {
-    //             let name = obj.str().unwrap().to_str().unwrap().to_string();
-    //             let obj = m.get(&name).unwrap();
-
-    //             if obj.is_callable() {
-    //                 objects.push((name, obj));
-    //             }
-    //         }
-    //     }
-    //     (objects, errors)
-    // }
-
-    // fn get_arguments(py_any: &PyAny) -> Vec<ArgumentType> {
-    //     let mut args = Vec::new();
-    //     for var_name in py_any.getattr("__code__").unwrap().getattr("co_varnames") {
-    //         let argument_tuple = var_name.downcast::<PyTuple>().unwrap();
-    //         if !argument_tuple.is_empty() {
-    //             let name = argument_tuple.get_item(0).to_string();
-    //             args.push(ArgumentType::String(name));
-    //         }
-    //     }
-
-    //     args
-    // }
+        args
+    }
 }
 
 impl<'a> Interpreter for PyInterpreter<'a> {
-    fn parse(&mut self) -> Result<usize, InterpreterError> {
-        Err(InterpreterError::Error)
+    fn parse(&mut self) -> Result<(usize, Vec<ParseError>), InterpreterError> {
+        let contents = std::fs::read_to_string(self.file.to_path_buf()).unwrap();
+        let parse_errors = self.parse_contents(&contents);
+        Ok((self.pending.len(), parse_errors))
     }
-    fn load(&mut self, keys: &[ScriptKey]) -> Result<ScriptInterpreterResult, InterpreterError> {
-        Err(InterpreterError::Error)
+
+    fn load(&mut self, mut keys: Vec<ScriptKey>) -> Result<Vec<Script>, InterpreterError> {
+        assert!(keys.len() > self.pending.len());
+        let mut scripts = Vec::new();
+
+        while !self.pending.is_empty() {
+            let (name, obj) = self.pending.pop().unwrap();
+            let mut script = Script::new(keys.pop().unwrap());
+
+            script.name = name;
+
+            let arguments = PyInterpreter::get_arguments(obj);
+            if !arguments.is_empty() {
+                script.argument_type = arguments;
+            }
+
+            script.file = self.file.to_path_buf();
+
+            if obj.hasattr("__doc__").unwrap() {
+                let doc = obj.getattr("__doc__").unwrap().to_string();
+                if doc != "None" {
+                    script.description = doc;
+                }
+            }
+
+            self.callables.insert(script.key, obj);
+
+            scripts.push(script);
+        }
+        Ok(scripts)
     }
+
     fn call(&self, key: ScriptKey, args: &[Box<dyn Any>]) -> Result<(), CallError> {
-        Err(CallError::KeyNotPresent)
+        match self.callables.get(key) {
+            Some(x) => {
+                if args.len() == 0 {
+                    x.call0().unwrap();
+                } else {
+                    let mut py_arguments = Vec::new();
+                    for arg in args {
+                        let typ = (&*arg).type_id();
+                        if typ == TypeId::of::<String>() {
+                            py_arguments.push(arg.downcast_ref::<String>().unwrap());
+                        } else {
+                            return Err(CallError::WrongArguments);
+                        }
+                    }
+                    let py_args = PyTuple::new(self.py, py_arguments);
+                    x.call1(py_args).unwrap();
+                }
+                Ok(())
+            }
+            None => Err(CallError::KeyNotPresent(key)),
+        }
     }
 }
 
-// impl<'a> Interpreter for PyInterpreter<'a> {
-//     fn parse(&mut self, file: &Path) -> Result<ScriptInterpreterResult, InterpreterError> {
-//         let contents = std::fs::read_to_string(path)?;
-//         self.load_contents(&contents, &path, authority)
-//     }
-
-//     fn update_keys(switch: &[(u64, ScriptKey)]) {}
-// }
-
-// impl<'a> CallContext for PyInterpreter<'a> {
-//     fn call(&self, key: ScriptKey, args: &[Box<dyn Any>]) -> Result<(), CallError> {
-//         if let Some(x) = self.callables.get(script_key) {
-//             if args.len() == 0 {
-//                 x.call0()?;
-//             } else {
-//                 let mut py_arguments = Vec::new();
-//                 for arg in args {
-//                     let typ = (&*arg).type_id();
-//                     if typ == TypeId::of::<String>() {
-//                         py_arguments.push(arg.downcast_ref::<String>().unwrap());
-//                     } else {
-//                         warn!("cannot convert one of the arguments");
-//                     }
-//                 }
-//                 let py_args = PyTuple::new(self.py, py_arguments);
-//                 x.call1(py_args)?;
-//             }
-//         }
-//         Ok(true)
-//     }
-// }
 // #[cfg(test)]
 // mod tests {
 //     use super::*;

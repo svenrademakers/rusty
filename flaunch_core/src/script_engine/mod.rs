@@ -92,6 +92,12 @@ impl<'a> std::fmt::Display for ScriptEngineError {
 
 impl<'a> std::error::Error for ScriptEngineError {}
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum ScriptEngineCmd {
+    Load { path: PathBuf },
+    Call { key: ScriptKey },
+}
+
 pub struct ScriptEngine {
     scripts: SlotMap<ScriptKey, InterpreterArc>,
     names: SecondaryMap<ScriptKey, String>,
@@ -118,8 +124,8 @@ impl ScriptEngine {
     }
 
     fn receive_parse_res_or_print(
-        recv: &Receiver<Result<(usize, InterpreterArc), ScriptEngineError>>,
-    ) -> Result<(usize, InterpreterArc), ScriptEngineError> {
+        recv: &Receiver<Result<(usize, Vec<ParseError>, InterpreterArc), ScriptEngineError>>,
+    ) -> Result<(usize, Vec<ParseError>, InterpreterArc), ScriptEngineError> {
         let recv_res = recv.recv_timeout(Duration::from_secs(3));
         match recv_res {
             Ok(parse_result) => parse_result,
@@ -134,36 +140,23 @@ impl ScriptEngine {
         let pool = ThreadPool::new(8);
 
         let files = get_files_of_dir(scripts_path)?;
-        let rx_parse = fun_name(&files, &pool);
+        let rx_parse = parse_files(&files, &pool);
 
-        let mut received_parse = 0;
-        let (tx_load, rx_load) = channel();
-        while ScriptEngine::pool_is_busy(&pool) && received_parse < files.len() {
-            let result = ScriptEngine::receive_parse_res_or_print(&rx_parse);
-
-            if let Ok((count, interpreter)) = result {
-                let keys = self.get_script_keys(count, interpreter.clone());
-                let tx_load = tx_load.clone();
-                pool.execute(move || {
-                    let result = interpreter::load(interpreter, &keys);
-                    tx_load.send(result).unwrap();
-                });
-            }
-            received_parse += 1;
-        }
-
+        let mut errors = Vec::new();
+        let rx_load = self.load_files(&pool, files, rx_parse, &mut errors);
         pool.join();
 
-        let mut errors: Vec<ParseError> = Vec::new();
+        self.store_new_scripts(rx_load, scripts_path);
+        Ok(errors)
+    }
+
+    fn store_new_scripts(
+        &mut self,
+        rx_load: Receiver<Result<Vec<Script>, ScriptEngineError>>,
+        scripts_path: &Path,
+    ) {
         for result in rx_load.recv().iter() {
-            if let Err(e) = result {
-                error!("{}", e);
-                continue;
-            }
-
-            let (scripts, parse_errors) = result.as_ref().unwrap();
-            errors.extend(parse_errors.clone());
-
+            let scripts = result.as_ref().unwrap();
             for script in scripts {
                 self.names.insert(script.key, script.name.clone());
                 self.description
@@ -175,8 +168,32 @@ impl ScriptEngine {
                 self.files.insert(script.key, scripts_path.to_path_buf());
             }
         }
+    }
 
-        Ok(errors)
+    fn load_files(
+        &mut self,
+        pool: &ThreadPool,
+        files: Vec<PathBuf>,
+        rx_parse: Receiver<Result<(usize, Vec<ParseError>, InterpreterArc), ScriptEngineError>>,
+        parse_errors: &mut Vec<ParseError>,
+    ) -> Receiver<Result<Vec<Script>, ScriptEngineError>> {
+        let mut received_parse = 0;
+        let (tx_load, rx_load) = channel();
+        while ScriptEngine::pool_is_busy(pool) && received_parse < files.len() {
+            let result = ScriptEngine::receive_parse_res_or_print(&rx_parse);
+
+            if let Ok((count, errors, interpreter)) = result {
+                parse_errors.extend(errors);
+                let keys = self.get_script_keys(count, interpreter.clone());
+                let tx_load = tx_load.clone();
+                pool.execute(move || {
+                    let result = interpreter::load(interpreter, keys);
+                    tx_load.send(result).unwrap();
+                });
+            }
+            received_parse += 1;
+        }
+        rx_load
     }
 
     fn get_script_keys(&mut self, result: usize, interpreter: InterpreterArc) -> Vec<ScriptKey> {
@@ -238,7 +255,7 @@ impl ScriptEngine {
 fn parse_files(
     files: &Vec<PathBuf>,
     pool: &ThreadPool,
-) -> Receiver<Result<(usize, Arc<Mutex<dyn Interpreter + Send>>), ScriptEngineError>> {
+) -> Receiver<Result<(usize, Vec<ParseError>, InterpreterArc), ScriptEngineError>> {
     let (tx_parse, rx_parse) = channel();
     for i in 0..files.len() {
         let tx_parse = tx_parse.clone();

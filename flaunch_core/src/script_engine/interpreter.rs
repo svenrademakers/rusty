@@ -14,6 +14,7 @@ impl std::fmt::Display for InterpreterType {
     }
 }
 
+#[derive(Debug, Default, PartialEq, Clone)]
 pub struct Script {
     pub key: ScriptKey,
     pub name: String,
@@ -23,38 +24,46 @@ pub struct Script {
     pub file: PathBuf,
 }
 
-pub type ScriptInterpreterResult = (Vec<Script>, Vec<ParseError>);
+impl Script {
+    pub fn new(key: ScriptKey) -> Self {
+        let mut script = Script::default();
+        script.key = key;
+        script
+    }
+}
+
 pub type InterpreterArc = Arc<Mutex<dyn Interpreter + Send>>;
 pub enum CallError {
-    KeyNotPresent,
+    KeyNotPresent(ScriptKey),
+    WrongArguments,
 }
 
 pub trait Interpreter {
     /// parse file and return the number of scripts found
-    fn parse(&mut self) -> Result<usize, InterpreterError>;
+    fn parse(&mut self) -> Result<(usize, Vec<ParseError>), InterpreterError>;
     /// finish loading. update the keys with actual script keys and return script
     /// information.
-    fn load(&mut self, keys: &[ScriptKey]) -> Result<ScriptInterpreterResult, InterpreterError>;
+    fn load(&mut self, keys: Vec<ScriptKey>) -> Result<Vec<Script>, InterpreterError>;
 
     fn call(&self, key: ScriptKey, args: &[Box<dyn Any>]) -> Result<(), CallError>;
 }
 
 pub fn parse_and_interpreter(
     interpreter: InterpreterArc,
-) -> Result<(usize, InterpreterArc), ScriptEngineError> {
+) -> Result<(usize, Vec<ParseError>, InterpreterArc), ScriptEngineError> {
     match interpreter.lock() {
         Ok(mut data) => data
             .parse()
             .map_err(|e| ScriptEngineError::InterpretError(e.clone()))
-            .map(|res| (res, interpreter.clone())),
+            .map(|(count, errors)| (count, errors, interpreter.clone())),
         Err(e) => Err(ScriptEngineError::PoisonedMutex(e.to_string())),
     }
 }
 
 pub fn load(
     interpreter: InterpreterArc,
-    keys: &[ScriptKey],
-) -> Result<ScriptInterpreterResult, ScriptEngineError> {
+    keys: Vec<ScriptKey>,
+) -> Result<Vec<Script>, ScriptEngineError> {
     match interpreter.lock() {
         Ok(mut data) => data
             .load(keys)
