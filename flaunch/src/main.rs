@@ -1,7 +1,6 @@
 mod app_launcher;
 mod controllers;
 mod system_tray;
-mod utils;
 
 #[cfg(target_os = "macos")]
 #[macro_use]

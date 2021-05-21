@@ -2,6 +2,8 @@
 #include <vector>
 #include <sstream>
 #include "flaunch_ui.hpp"
+#include "flaunch_rust.hpp"
+
 #include "image_loader.hpp"
 #include "logging.hpp"
 
@@ -76,7 +78,7 @@ namespace ui
 
         //load all
         load_script("");
-        nanogui::mainloop();
+        nanogui::mainloop(&ffi::poll_rust_data);
         nanogui::shutdown();
 
         delete ourScreen;
@@ -90,10 +92,14 @@ namespace ui
 
     static std::vector<std::pair<uint64_t, nanogui::Button *>>
         ourScripts;
-
-    void add_script(uint64_t script_key, const char *name, void (*clicked)(uint64_t))
+    
+    void script_change_new(uint64_t key, const char* name)
     {
-        ourScripts.push_back(std::make_pair(script_key, new Button(ourScreen, name)));
-        ourScripts.back().second->setCallback([script_key, &clicked] { clicked(script_key); });
+        ourScripts.push_back(std::make_pair(key, new Button(ourScreen, name)));
+        ourScripts.back().second->setCallback([key] { ffi::execute_script(key); });
+    }
+
+    void script_change_delete(uint64_t key)
+    {
     }
 }

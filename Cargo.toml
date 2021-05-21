@@ -5,6 +5,7 @@ members = [
     "flaunch_cli",
     "flaunch_ui",
     "flaunch",
+    "sven_utils",
 ]
 
 [profile.dev]

@@ -10,5 +10,5 @@ impl WindowsLauncher {
 
 impl AppLauncherT for WindowsLauncher {
     fn set_resources() {}
-    fn configure_url_scheme(scheme: &str, description: &str) {}
+    fn configure_url_scheme(_scheme: &str, _description: &str) {}
 }

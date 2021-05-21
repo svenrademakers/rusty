@@ -1,6 +1,6 @@
 use cc;
 use cmake::Config;
-
+extern crate bindgen;
 extern crate cbindgen;
 use std::env;
 use std::path::PathBuf;
@@ -49,6 +49,7 @@ fn build_flaunch_ui() {
         .include("../extern/nanogui/ext/nanovg/src")
         .include("../extern/nanogui/include")
         .include("incl")
+        .include(env::var("OUT_DIR").unwrap())
         .include("../extern/lodepng")
         .define("NVG_SHARED", None)
         .define("GLAD_GLAPI_EXPORT", None)
@@ -63,14 +64,9 @@ fn build_flaunch_ui() {
 }
 
 fn generate_c_bindings() {
-    let crate_dir = format!(
-        "{}/../flaunch_core",
-        env::var("CARGO_MANIFEST_DIR").unwrap()
-    );
-
-    let package_name = env::var("CARGO_PKG_NAME").unwrap();
+    let crate_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
     let output_file = PathBuf::from(env::var("OUT_DIR").unwrap())
-        .join(format!("{}.hpp", package_name))
+        .join("flaunch_rust.hpp")
         .display()
         .to_string();
 
@@ -84,16 +80,28 @@ fn generate_c_bindings() {
         .write_to_file(&output_file);
 }
 
-// fn target_dir() -> PathBuf {
-//     if let Ok(target) = env::var("CARGO_TARGET_DIR") {
-//         PathBuf::from(target)
-//     } else {
-//         PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap()).join("target")
-//     }
-// }
+fn generate_rust_bindings() {
+    println!("cargo:rustc-env=BINDGEN_EXTRA_CLANG_ARGS=-x c++ -std=c++14");
+    let bindings = bindgen::Builder::default()
+        .header("../flaunch_ui/incl/flaunch_ui.hpp")
+        .parse_callbacks(Box::new(bindgen::CargoCallbacks))
+        .enable_cxx_namespaces()
+        .opaque_type("std::.*")
+        .allowlist_type("std::string|void.*")
+        .allowlist_function("ui.*")
+        .default_enum_style(bindgen::EnumVariation::NewType { is_bitfield: false })
+        .generate()
+        .unwrap();
+
+    let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
+    bindings
+        .write_to_file(out_path.join("bindings.rs"))
+        .expect("Couldn't write bindings!");
+}
 
 fn main() {
     build_nanogui();
     generate_c_bindings();
+    generate_rust_bindings();
     build_flaunch_ui();
 }
