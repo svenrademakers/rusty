@@ -1,16 +1,35 @@
-use self::mainview_controller::MainViewController;
-use flaunch_core::{script_engine::ScriptEngineCmd, settings::Settings, SettingKey};
-use mainview_controller::MAINVIEW_CONTROLLER;
-use std::{
-    cell::{Cell, RefCell},
-    rc::Rc,
-    sync::{mpsc::Sender, Arc},
-};
-mod mainview_controller;
+mod application_controller;
+mod script_engine_controller;
 
-pub fn init_controllers(
-    script_cmd: Sender<ScriptEngineCmd>,
+use flaunch_core::{script_engine::ScriptEngine, settings::Settings, SettingKey};
+use script_engine_controller::ScriptEngineController;
+use std::{cell::RefCell, rc::Rc};
+
+pub trait Poll {
+    fn poll(&mut self);
+}
+
+pub struct Controllers {
+    controllers: Vec<Box<dyn Poll>>,
     settings: Rc<RefCell<Settings<SettingKey>>>,
-) {
-    MAINVIEW_CONTROLLER = RefCell::new(Some(MainViewController::new(script_cmd, settings)));
+}
+
+impl Controllers {
+    pub fn new(
+        script_engine: Rc<ScriptEngine>,
+        settings: Rc<RefCell<Settings<SettingKey>>>,
+    ) -> Self {
+        let script_controller = ScriptEngineController::new(script_engine, settings.clone());
+        Controllers {
+            controllers: vec![Box::new(script_controller)],
+            settings: settings,
+        }
+    }
+
+    pub fn poll(&mut self) {
+        // let _w = self.settings.get_receiver().try_recv();
+        for controller in &mut self.controllers {
+            controller.poll();
+        }
+    }
 }

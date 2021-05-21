@@ -1,6 +1,7 @@
-use app_launcher::AppLauncherT;
+use crate::app_launcher::AppLauncherT;
 use fruitbasket::*;
 use std::sync::mpsc::{self, Receiver, Sender};
+use flaunch_core::app_meta;
 
 pub struct OsxLauncher {
     fruit_app: FruitApp,

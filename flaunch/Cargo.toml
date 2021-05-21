@@ -6,15 +6,16 @@ edition = "2018"
 
 [dependencies]
 flaunch_core = { path = "../flaunch_core" }
+flaunch_ui = { path = "../flaunch_ui" }
+crossbeam-channel = "*"
+spin="*"
 
 [dependencies.system_uri]
 version = "*"
 default-features = false
 
 [build-dependencies]
-cmake ="*"
 bindgen = "*"
-cc = "*"
 
 [target."cfg(windows)".dependencies]
 #systray = "0.1.1"

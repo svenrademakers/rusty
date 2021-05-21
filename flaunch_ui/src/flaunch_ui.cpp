@@ -7,6 +7,12 @@
 
 using namespace nanogui;
 
+// rust symbols
+extern "C" {
+    void quit();
+    void load_script(const char* file);
+}
+
 namespace ui
 {
     class Menu : public Widget
@@ -18,7 +24,7 @@ namespace ui
             BoxLayout *box = new BoxLayout(Orientation::Horizontal, Alignment::Fill);
             this->setLayout(box);
 
-            add_menu_item("Quit", [] {});
+            add_menu_item("Quit", &quit);
         }
 
         void add_menu_item(const char *text, const std::function<void()> &callback)
@@ -64,9 +70,12 @@ namespace ui
 
     void mainloop()
     {
+        //add_script(1234, "test", nullptr);
         ourScreen->setVisible(true);
         ourScreen->performLayout();
 
+        //load all
+        load_script("");
         nanogui::mainloop();
         nanogui::shutdown();
 

@@ -3,9 +3,10 @@ mod py_interpreter;
 
 use crate::logging::*;
 
-use interpreter::*;
+use crossbeam_channel::{unbounded, Receiver, Sender};
+pub use interpreter::Script;
 use py_interpreter::*;
-use std::{sync::mpsc::Receiver, time::Duration};
+use std::{ffi::CString, time::Duration};
 use threadpool::ThreadPool;
 
 pub use slotmap::*;
@@ -15,9 +16,11 @@ use std::{
     boxed::Box,
     ffi::OsString,
     fs::DirEntry,
-    sync::{mpsc::channel, Arc, Mutex},
+    sync::{Arc, Mutex},
 };
 use std::{path::PathBuf, vec::Vec};
+
+use self::interpreter::{get_interpreter_for_file, InterpreterArc};
 
 const PYTHON_EXTENSION: &str = "py";
 
@@ -90,13 +93,18 @@ impl<'a> std::fmt::Display for ScriptEngineError {
     }
 }
 
-impl<'a> std::error::Error for ScriptEngineError {}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum ScriptEngineCmd {
-    Load { path: PathBuf },
-    Call { key: ScriptKey },
+pub enum ScriptChange {
+    New(CScript),
+    Deleted(u64),
 }
+
+#[repr(C)]
+pub struct CScript {
+    pub key: u64,
+    pub name: CString,
+}
+
+impl<'a> std::error::Error for ScriptEngineError {}
 
 pub struct ScriptEngine {
     scripts: SlotMap<ScriptKey, InterpreterArc>,
@@ -105,10 +113,13 @@ pub struct ScriptEngine {
     argument_type: SecondaryMap<ScriptKey, Vec<ArgumentType>>,
     argument_descriptions: SecondaryMap<ScriptKey, Vec<String>>,
     files: SecondaryMap<ScriptKey, PathBuf>,
+    recv_change: Receiver<ScriptChange>,
+    send_change: Sender<ScriptChange>,
 }
 
 impl ScriptEngine {
     pub fn new() -> Self {
+        let (send, recv) = unbounded();
         ScriptEngine {
             scripts: SlotMap::with_key(),
             names: SecondaryMap::new(),
@@ -116,7 +127,13 @@ impl ScriptEngine {
             argument_type: SecondaryMap::new(),
             argument_descriptions: SecondaryMap::new(),
             files: SecondaryMap::new(),
+            recv_change: recv,
+            send_change: send,
         }
+    }
+
+    pub fn get_receiver(&mut self) -> Receiver<ScriptChange> {
+        self.recv_change.clone()
     }
 
     fn pool_is_busy(pool: &ThreadPool) -> bool {
@@ -166,8 +183,18 @@ impl ScriptEngine {
                 self.argument_descriptions
                     .insert(script.key, script.argument_descriptions.clone());
                 self.files.insert(script.key, scripts_path.to_path_buf());
+
+                self.send_script_change(script);
             }
         }
+    }
+
+    fn send_script_change(&mut self, script: &Script) {
+        let c_script = CScript {
+            key: script.key.data().as_ffi(),
+            name: CString::new(script.name.clone()).unwrap(),
+        };
+        self.send_change.send(ScriptChange::New(c_script)).unwrap();
     }
 
     fn load_files(
@@ -178,7 +205,7 @@ impl ScriptEngine {
         parse_errors: &mut Vec<ParseError>,
     ) -> Receiver<Result<Vec<Script>, ScriptEngineError>> {
         let mut received_parse = 0;
-        let (tx_load, rx_load) = channel();
+        let (tx_load, rx_load) = unbounded();
         while ScriptEngine::pool_is_busy(pool) && received_parse < files.len() {
             let result = ScriptEngine::receive_parse_res_or_print(&rx_parse);
 
@@ -220,8 +247,8 @@ impl ScriptEngine {
 
     pub fn call(
         &self,
-        script_key: ScriptKey,
-        args: &[Box<dyn Any>],
+        _script_key: ScriptKey,
+        _args: &[Box<dyn Any>],
     ) -> Result<bool, ScriptEngineError> {
         //     let interpreter = self
         //         .scripts
@@ -256,7 +283,7 @@ fn parse_files(
     files: &Vec<PathBuf>,
     pool: &ThreadPool,
 ) -> Receiver<Result<(usize, Vec<ParseError>, InterpreterArc), ScriptEngineError>> {
-    let (tx_parse, rx_parse) = channel();
+    let (tx_parse, rx_parse) = unbounded();
     for i in 0..files.len() {
         let tx_parse = tx_parse.clone();
         let file = files.get(i).unwrap().clone();

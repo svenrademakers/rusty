@@ -244,11 +244,11 @@ impl TStatusBar for OSXStatusBar {
         }
     }
     fn run(&mut self, block: bool) {
-        let period = match block {
-            true => fruitbasket::RunPeriod::Forever,
-            _ => fruitbasket::RunPeriod::Once,
-        };
-        let _ = self.app.run(period);
+        // let period = match block {
+        //     true => fruitbasket::RunPeriod::Forever,
+        //     _ => fruitbasket::RunPeriod::Once,
+        // };
+        // let _ = self.app.run(period);
     }
 }
 

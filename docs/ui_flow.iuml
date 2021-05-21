@@ -1,0 +1,26 @@
+@startuml ui_flow
+
+participant NanoGui
+participant RustWrapper<<ScriptCmdSender>>
+note over RustWrapper
+Wrapper glues C/C++ ui code with Rust code.
+C side implements c symbols. rust propagates them with
+channels to the controllers/models.
+end note
+participant ScriptEngineModel<<CmdResultSender>>
+Participant ScriptEngineController<<ScriptCmdReceiver>>
+participant ScriptEngine
+... everything initialized at this point ...
+[->NanoGui:script_click
+activate NanoGui
+NanoGui->RustWrapper:send(ScriptEngineCmd::execute_script, script_key, args)
+deactivate NanoGui
+
+RustWrapper->ScriptEngineController:recv(ScriptEngineCmd::Call)
+activate ScriptEngineController
+ScriptEngineController->ScriptEngine:call(script_key, args)
+ScriptEngine-->ScriptEngineController
+ScriptEngineController->ScriptEngineModel:send(CmdResult::call)
+ScriptEngineModel->RustWrapper:result_received(CmdResult::call)
+deactivate ScriptEngineController
+@enduml
