@@ -161,7 +161,7 @@ impl ScriptEngine {
 
         let mut errors = Vec::new();
         let rx_load = self.load_files(&pool, files, rx_parse, &mut errors);
-        pool.join();
+        //pool.join();
 
         self.store_new_scripts(rx_load, scripts_path);
         Ok(errors)
@@ -206,17 +206,20 @@ impl ScriptEngine {
     ) -> Receiver<Result<Vec<Script>, ScriptEngineError>> {
         let mut received_parse = 0;
         let (tx_load, rx_load) = unbounded();
-        while ScriptEngine::pool_is_busy(pool) && received_parse < files.len() {
+        while received_parse < files.len() {
+            println!("rec{} files{}", received_parse, files.len());
             let result = ScriptEngine::receive_parse_res_or_print(&rx_parse);
-
             if let Ok((count, errors, interpreter)) = result {
+                println!("{:?}", errors);
                 parse_errors.extend(errors);
                 let keys = self.get_script_keys(count, interpreter.clone());
                 let tx_load = tx_load.clone();
-                pool.execute(move || {
-                    let result = interpreter::load(interpreter, keys);
-                    tx_load.send(result).unwrap();
-                });
+                //pool.execute(move || {
+                let result = interpreter::load(interpreter, keys);
+                tx_load.send(result).unwrap();
+                //});
+            } else {
+                println!("afasfds");
             }
             received_parse += 1;
         }
@@ -288,11 +291,10 @@ fn parse_files(
         let tx_parse = tx_parse.clone();
         let file = files.get(i).unwrap().clone();
 
-        pool.execute(move || {
-            let result =
-                get_interpreter_for_file(&file).and_then(interpreter::parse_and_interpreter);
-            tx_parse.send(result).unwrap();
-        });
+        //pool.execute(move || {
+        let result = get_interpreter_for_file(&file).and_then(interpreter::parse_and_interpreter);
+        tx_parse.send(result).unwrap();
+        // });
     }
     rx_parse
 }

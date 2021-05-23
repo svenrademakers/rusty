@@ -43,7 +43,6 @@ impl ScriptEngineController {
                 warn!("could not borrow settings");
             }
         }
-
         if path.exists() {
             if let Some(engine) = Rc::get_mut(&mut self.script_engine) {
                 engine.load(&path).unwrap();

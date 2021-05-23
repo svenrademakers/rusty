@@ -72,7 +72,6 @@ namespace ui
 
     void mainloop()
     {
-        //add_script(1234, "test", nullptr);
         ourScreen->setVisible(true);
         ourScreen->performLayout();
 

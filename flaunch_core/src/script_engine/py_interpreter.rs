@@ -14,45 +14,19 @@ pub struct PyInterpreter<'a> {
     callables: SparseSecondaryMap<ScriptKey, &'a PyAny>,
     _gil: GILGuard,
     py: Python<'a>,
-    file: PathBuf,
     pending: Vec<(String, &'a PyAny)>,
+    file: PathBuf,
 }
 
 impl<'a> PyInterpreter<'a> {
-    pub fn new(file: &Path) -> Self {
+    pub fn new() -> Self {
         PyInterpreter {
             callables: SparseSecondaryMap::new(),
             _gil: Python::acquire_gil(),
             py: unsafe { Python::assume_gil_acquired() },
-            file: file.to_path_buf(),
             pending: Vec::new(),
+            file: PathBuf::new(),
         }
-    }
-
-    fn parse_contents(&mut self, contents: &str) -> Vec<ParseError> {
-        let filename = self.file.to_string_lossy().to_string();
-        let module_name: &str = self.file.file_stem().and_then(OsStr::to_str).unwrap();
-        let module = PyModule::from_code(self.py, &contents, &filename, &module_name);
-        let mut errors = Vec::new();
-
-        if let Err(e) = module {
-            let error_tuple: ParseError = ParseError {
-                filename: filename,
-                message: e.pvalue(self.py).to_string(),
-                traceback: e.ptraceback(self.py).to_object(self.py).to_string(),
-            };
-            errors.push(error_tuple);
-        } else if let Ok(m) = module {
-            for obj in m.dict().keys() {
-                let name = obj.str().unwrap().to_str().unwrap().to_string();
-                let obj = m.get(&name).unwrap();
-
-                if obj.is_callable() {
-                    self.pending.push((name, obj));
-                }
-            }
-        }
-        errors
     }
 
     fn get_arguments(py_any: &PyAny) -> Vec<ArgumentType> {
@@ -70,14 +44,39 @@ impl<'a> PyInterpreter<'a> {
 }
 
 impl<'a> Interpreter for PyInterpreter<'a> {
-    fn parse(&mut self) -> Result<(usize, Vec<ParseError>), InterpreterError> {
-        let contents = std::fs::read_to_string(self.file.to_path_buf()).unwrap();
-        let parse_errors = self.parse_contents(&contents);
-        Ok((self.pending.len(), parse_errors))
+    fn parse(
+        &mut self,
+        content: &[u8],
+        file: &Path,
+    ) -> Result<(usize, Vec<ParseError>), InterpreterError> {
+        let filename = file.to_string_lossy().to_string();
+        let module_name: &str = file.file_stem().and_then(OsStr::to_str).unwrap();
+        let module = PyModule::from_code(self.py, &str::from(content), &filename, &module_name);
+        let mut errors = Vec::new();
+        self.file = file.to_path_buf();
+        if let Err(e) = module {
+            let error_tuple: ParseError = ParseError {
+                filename: filename,
+                message: e.pvalue(self.py).to_string(),
+                traceback: e.ptraceback(self.py).to_object(self.py).to_string(),
+            };
+            errors.push(error_tuple);
+        } else if let Ok(m) = module {
+            for obj in m.dict().keys() {
+                let name = obj.str().unwrap().to_str().unwrap().to_string();
+                let obj = m.get(&name).unwrap();
+
+                if obj.is_callable() {
+                    self.pending.push((name, obj));
+                }
+            }
+        }
+
+        Ok((self.pending.len(), errors))
     }
 
     fn load(&mut self, mut keys: Vec<ScriptKey>) -> Result<Vec<Script>, InterpreterError> {
-        assert!(keys.len() > self.pending.len());
+        assert!(keys.len() <= self.pending.len());
         let mut scripts = Vec::new();
 
         while !self.pending.is_empty() {
@@ -91,7 +90,7 @@ impl<'a> Interpreter for PyInterpreter<'a> {
                 script.argument_type = arguments;
             }
 
-            script.file = self.file.to_path_buf();
+            script.file = self.file;
 
             if obj.hasattr("__doc__").unwrap() {
                 let doc = obj.getattr("__doc__").unwrap().to_string();

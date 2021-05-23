@@ -40,10 +40,7 @@ pub fn run_gui_blocking() {
             to_c_char(app_meta::VERSION),
             to_c_char(app_meta::BUILD_DATE),
         );
-
-        thread::spawn(|| {
-            root::ui::mainloop();
-        });
+        root::ui::mainloop();
     }
 }
 

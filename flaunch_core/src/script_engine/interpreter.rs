@@ -40,7 +40,11 @@ pub enum CallError {
 
 pub trait Interpreter {
     /// parse file and return the number of scripts found
-    fn parse(&mut self) -> Result<(usize, Vec<ParseError>), InterpreterError>;
+    fn parse(
+        &mut self,
+        content: &[u8],
+        file: &Path,
+    ) -> Result<(usize, Vec<ParseError>), InterpreterError>;
     /// finish loading. update the keys with actual script keys and return script
     /// information.
     fn load(&mut self, keys: Vec<ScriptKey>) -> Result<Vec<Script>, InterpreterError>;
