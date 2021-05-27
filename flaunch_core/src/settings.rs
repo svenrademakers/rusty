@@ -3,7 +3,6 @@ use crate::app_meta;
 use crate::logging;
 pub use json::JsonValue;
 
-use bus::{Bus, BusReader};
 use logging::*;
 use std::hash::Hash;
 use std::marker::Copy;
@@ -22,7 +21,6 @@ where
     settings: HashMap<Key, JsonValue>,
     /// mapping from textual json key to rust enum key
     mapping: HashMap<&'static str, Key>,
-    bus: Bus<Key>,
 }
 
 impl<Key> Settings<Key>
@@ -33,7 +31,6 @@ where
         let mut set = Settings::<Key> {
             settings: HashMap::new(),
             mapping: HashMap::new(),
-            bus: Bus::new(30),
         };
 
         for (key, json_key, default) in key_mapping {
@@ -59,17 +56,12 @@ where
         if let Some(val) = self.settings.get_mut(&setting) {
             if val.is_string() {
                 *val = json::JsonValue::String(value);
-                self.bus.broadcast(setting);
             }
         }
     }
 
     pub fn get_str(&self, setting: Key) -> Option<&str> {
         self.settings.get(&setting).map(|x| x.as_str())?
-    }
-
-    pub fn get_receiver(&mut self) -> BusReader<Key> {
-        self.bus.add_rx()
     }
 
     fn from_json(&mut self, settings_file: &str) {

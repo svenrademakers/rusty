@@ -10,20 +10,16 @@ pub use pyo3::{
     types::{PyModule, PyTuple},
 };
 
-pub struct PyInterpreter<'a> {
-    callables: SparseSecondaryMap<ScriptKey, &'a PyAny>,
-    _gil: GILGuard,
-    py: Python<'a>,
-    pending: Vec<(String, &'a PyAny)>,
+pub struct PyInterpreter {
+    callables: SparseSecondaryMap<ScriptKey, PyObject>,
+    pending: Vec<(String, PyObject)>,
     file: PathBuf,
 }
 
-impl<'a> PyInterpreter<'a> {
+impl PyInterpreter {
     pub fn new() -> Self {
         PyInterpreter {
             callables: SparseSecondaryMap::new(),
-            _gil: Python::acquire_gil(),
-            py: unsafe { Python::assume_gil_acquired() },
             pending: Vec::new(),
             file: PathBuf::new(),
         }
@@ -43,7 +39,7 @@ impl<'a> PyInterpreter<'a> {
     }
 }
 
-impl<'a> Interpreter for PyInterpreter<'a> {
+impl Interpreter for PyInterpreter {
     fn parse(
         &mut self,
         content: &[u8],
@@ -51,14 +47,18 @@ impl<'a> Interpreter for PyInterpreter<'a> {
     ) -> Result<(usize, Vec<ParseError>), InterpreterError> {
         let filename = file.to_string_lossy().to_string();
         let module_name: &str = file.file_stem().and_then(OsStr::to_str).unwrap();
-        let module = PyModule::from_code(self.py, &str::from(content), &filename, &module_name);
+        let as_str = std::str::from_utf8(content).unwrap();
+
+        let gil = Python::acquire_gil();
+        let py = gil.python();
+        let module = PyModule::from_code(py, &as_str, &filename, &module_name);
         let mut errors = Vec::new();
         self.file = file.to_path_buf();
         if let Err(e) = module {
             let error_tuple: ParseError = ParseError {
                 filename: filename,
-                message: e.pvalue(self.py).to_string(),
-                traceback: e.ptraceback(self.py).to_object(self.py).to_string(),
+                message: e.pvalue(py).to_string(),
+                traceback: e.ptraceback(py).to_object(py).to_string(),
             };
             errors.push(error_tuple);
         } else if let Ok(m) = module {
@@ -67,7 +67,7 @@ impl<'a> Interpreter for PyInterpreter<'a> {
                 let obj = m.get(&name).unwrap();
 
                 if obj.is_callable() {
-                    self.pending.push((name, obj));
+                    self.pending.push((name, obj.to_object(py)));
                 }
             }
         }
@@ -76,8 +76,16 @@ impl<'a> Interpreter for PyInterpreter<'a> {
     }
 
     fn load(&mut self, mut keys: Vec<ScriptKey>) -> Result<Vec<Script>, InterpreterError> {
-        assert!(keys.len() <= self.pending.len());
+        if keys.len() < self.pending.len() {
+            return Err(InterpreterError::NotEnoughKeys {
+                needed: self.pending.len(),
+                provided: keys.len(),
+            });
+        }
+
         let mut scripts = Vec::new();
+        let gil = Python::acquire_gil();
+        let py = gil.python();
 
         while !self.pending.is_empty() {
             let (name, obj) = self.pending.pop().unwrap();
@@ -85,15 +93,15 @@ impl<'a> Interpreter for PyInterpreter<'a> {
 
             script.name = name;
 
-            let arguments = PyInterpreter::get_arguments(obj);
+            let arguments = PyInterpreter::get_arguments(obj.as_ref(py));
             if !arguments.is_empty() {
                 script.argument_type = arguments;
             }
 
-            script.file = self.file;
+            script.file = self.file.clone();
 
-            if obj.hasattr("__doc__").unwrap() {
-                let doc = obj.getattr("__doc__").unwrap().to_string();
+            if obj.as_ref(py).hasattr("__doc__").unwrap() {
+                let doc = obj.getattr(py, "__doc__").unwrap().to_string();
                 if doc != "None" {
                     script.description = doc;
                 }
@@ -109,8 +117,11 @@ impl<'a> Interpreter for PyInterpreter<'a> {
     fn call(&self, key: ScriptKey, args: &[Box<dyn Any>]) -> Result<(), CallError> {
         match self.callables.get(key) {
             Some(x) => {
+                let gil = Python::acquire_gil();
+                let py = gil.python();
+
                 if args.len() == 0 {
-                    x.call0().unwrap();
+                    x.call0(py).unwrap();
                 } else {
                     let mut py_arguments = Vec::new();
                     for arg in args {
@@ -121,8 +132,8 @@ impl<'a> Interpreter for PyInterpreter<'a> {
                             return Err(CallError::WrongArguments);
                         }
                     }
-                    let py_args = PyTuple::new(self.py, py_arguments);
-                    x.call1(py_args).unwrap();
+                    let py_args = PyTuple::new(py, py_arguments);
+                    x.call1(py, py_args).unwrap();
                 }
                 Ok(())
             }
@@ -131,60 +142,75 @@ impl<'a> Interpreter for PyInterpreter<'a> {
     }
 }
 
-// #[cfg(test)]
-// mod tests {
-//     use super::*;
+unsafe impl Send for PyInterpreter {}
+unsafe impl Sync for PyInterpreter {}
 
-//     #[test]
-//     fn parse_error_added() {
-//         let mut script_store = ScriptStore::new();
-//         let mut py_interpreter = PyInterpreter::new();
-//         py_interpreter
-//             .load_contents(
-//                 "adsfasdf",
-//                 &std::path::PathBuf::from("/my/path/sven.py"),
-//                 &mut script_store,
-//             )
-//             .unwrap();
-//         assert_eq!(script_store.parse_errors[0].filename, "/my/path/sven.py");
-//         assert!(!script_store.parse_errors[0].message.is_empty());
-//     }
-//     #[test]
-//     fn parse_py_files() {
-//         let mut script_store = ScriptStore::new();
-//         let mut py_interpreter = PyInterpreter::new();
-//         py_interpreter
-//             .load_contents(
-//                 concat!(
-//                     "def test_123(wat):\n\t\"\"\"this is a test",
-//                     " doc\"\"\"\n\tprint(\"hoi\")\n",
-//                     "def test_2():\n\tprint(\"test2\")\n"
-//                 ),
-//                 &std::path::PathBuf::from("/my/path/sven.py"),
-//                 &mut script_store,
-//             )
-//             .unwrap();
-//         let mut iter = script_store.scripts.iter();
-//         let (key, typ) = iter.next().unwrap();
-//         assert_eq!(typ, &InterpreterType::Python);
-//         assert_eq!(script_store.names[key], "test_123");
-//         assert_eq!(script_store.files[key], "/my/path/sven.py");
-//         assert_eq!(script_store.description[key], "this is a test doc");
-//         assert_eq!(
-//             script_store.argument_type[key][0],
-//             ArgumentType::String("wat".to_string())
-//         );
+#[cfg(test)]
+mod tests {
+    use futures::executor::block_on;
 
-//         let (key, typ) = iter.next().unwrap();
-//         assert_eq!(typ, &InterpreterType::Python);
-//         assert_eq!(script_store.names[key], "test_2");
-//         assert_eq!(script_store.files[key], "/my/path/sven.py");
-//         assert_eq!(script_store.description.get(key), None);
-//         assert_eq!(script_store.argument_type.get(key), None);
+    use super::*;
 
-//         assert_eq!(script_store.parse_errors.len(), 0);
-//     }
-// }
+    #[test]
+    fn parse_error_added() {
+        let mut py_interpreter = PyInterpreter::new();
+        let result = py_interpreter
+            .parse(
+                "adsfasdf".as_bytes(),
+                &std::path::PathBuf::from("/my/path/sven.py"),
+            )
+            .unwrap();
 
-unsafe impl<'a> Send for PyInterpreter<'a> {}
-unsafe impl<'a> Sync for PyInterpreter<'a> {}
+        assert_eq!(result.0, 0);
+        assert_eq!(result.1.len(), 1);
+    }
+
+    #[test]
+    fn parse_py_files() {
+        let mut keys: SlotMap<ScriptKey, InterpreterArc> = SlotMap::default();
+        let arc = create_interpreter_for_file(&PathBuf::from("w.py")).unwrap();
+        let mut py_interpreter = block_on(arc.lock());
+
+        let result = py_interpreter
+            .parse(
+                concat!(
+                    "def test_123(wat):\n\t\"\"\"this is a test",
+                    " doc\"\"\"\n\tprint(\"hoi\")\n",
+                    "def test_2():\n\tprint(\"test2\")\n"
+                )
+                .as_bytes(),
+                &std::path::PathBuf::from("/my/path/sven.py"),
+            )
+            .unwrap();
+        assert_eq!(result.0, 2);
+        assert_eq!(result.1.len(), 0);
+
+        assert_eq!(
+            py_interpreter.load(Vec::new()),
+            Err(InterpreterError::NotEnoughKeys {
+                needed: 2,
+                provided: 0
+            }),
+        );
+
+        let mut res = Vec::new();
+        for _n in 0..result.0 {
+            res.push(keys.insert(arc.clone()));
+        }
+
+        let result = py_interpreter.load(res).unwrap();
+
+        assert_eq!(result[1].name, "test_123".to_string());
+        assert_eq!(result[1].file, PathBuf::from("/my/path/sven.py"));
+        assert_eq!(result[1].description, "this is a test doc".to_string());
+        assert_eq!(
+            result[1].argument_type[0],
+            ArgumentType::String("wat".to_string())
+        );
+
+        assert_eq!(result[0].name, "test_2".to_string());
+        assert_eq!(result[0].file, PathBuf::from("/my/path/sven.py"));
+        assert!(result[0].description.is_empty());
+        assert!(result[0].argument_type.is_empty());
+    }
+}

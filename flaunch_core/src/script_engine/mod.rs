@@ -3,24 +3,21 @@ mod py_interpreter;
 
 use crate::logging::*;
 
-use crossbeam_channel::{unbounded, Receiver, Sender};
+use futures::stream::FuturesUnordered;
 pub use interpreter::Script;
 use py_interpreter::*;
-use std::{ffi::CString, time::Duration};
-use threadpool::ThreadPool;
+use std::ffi::CString;
+use tokio::sync::broadcast::{channel, Receiver, Sender};
 
+use futures::StreamExt;
+use futures::{future::FutureExt, select};
 pub use slotmap::*;
 use std::path::Path;
-use std::{
-    any::Any,
-    boxed::Box,
-    ffi::OsString,
-    fs::DirEntry,
-    sync::{Arc, Mutex},
-};
+use std::{any::Any, boxed::Box, ffi::OsString, fs::DirEntry, sync::Arc};
+
 use std::{path::PathBuf, vec::Vec};
 
-use self::interpreter::{get_interpreter_for_file, InterpreterArc};
+use self::interpreter::InterpreterArc;
 
 const PYTHON_EXTENSION: &str = "py";
 
@@ -39,15 +36,20 @@ new_key_type! {pub struct ScriptKey;}
 #[derive(Debug, Clone, PartialEq)]
 pub enum InterpreterError {
     Error,
+    NotEnoughKeys { needed: usize, provided: usize },
 }
 
 impl std::fmt::Display for InterpreterError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             InterpreterError::Error => write!(f, "Not good!"),
+            InterpreterError::NotEnoughKeys { needed, provided } => {
+                write!(f, "Needed {} keys. Got {}", needed, provided)
+            }
         }
     }
 }
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum ScriptEngineError {
     ScriptKeyDoesNotExist(ScriptKey),
@@ -93,12 +95,14 @@ impl<'a> std::fmt::Display for ScriptEngineError {
     }
 }
 
+#[derive(Clone, Debug)]
 pub enum ScriptChange {
     New(CScript),
     Deleted(u64),
 }
 
 #[repr(C)]
+#[derive(Clone, Debug)]
 pub struct CScript {
     pub key: u64,
     pub name: CString,
@@ -119,7 +123,7 @@ pub struct ScriptEngine {
 
 impl ScriptEngine {
     pub fn new() -> Self {
-        let (send, recv) = unbounded();
+        let (send, recv) = channel(64);
         ScriptEngine {
             scripts: SlotMap::with_key(),
             names: SecondaryMap::new(),
@@ -132,60 +136,63 @@ impl ScriptEngine {
         }
     }
 
-    pub fn get_receiver(&mut self) -> Receiver<ScriptChange> {
-        self.recv_change.clone()
-    }
+    // pub fn get_receiver(&mut self) -> Receiver<ScriptChange> {
+    //     self.recv_change.clone()
+    // }
 
-    fn pool_is_busy(pool: &ThreadPool) -> bool {
-        pool.active_count() > 0 && pool.queued_count() > 0
-    }
-
-    fn receive_parse_res_or_print(
-        recv: &Receiver<Result<(usize, Vec<ParseError>, InterpreterArc), ScriptEngineError>>,
-    ) -> Result<(usize, Vec<ParseError>, InterpreterArc), ScriptEngineError> {
-        let recv_res = recv.recv_timeout(Duration::from_secs(3));
-        match recv_res {
-            Ok(parse_result) => parse_result,
-            Err(e) => {
-                error!("{}", e);
-                Err(ScriptEngineError::ErrorMessage("".to_string()))
-            }
-        }
-    }
-
-    pub fn load(&mut self, scripts_path: &Path) -> Result<Vec<ParseError>, ScriptEngineError> {
-        let pool = ThreadPool::new(8);
+    pub async fn load(
+        &mut self,
+        scripts_path: &Path,
+    ) -> Result<Vec<ParseError>, ScriptEngineError> {
+        let mut parse_fut = FuturesUnordered::new();
+        let mut load_fut = FuturesUnordered::new();
 
         let files = get_files_of_dir(scripts_path)?;
-        let rx_parse = parse_files(&files, &pool);
+        if files.is_empty() {
+            return Err(ScriptEngineError::NoScriptsFound(
+                scripts_path.to_path_buf(),
+            ));
+        }
 
-        let mut errors = Vec::new();
-        let rx_load = self.load_files(&pool, files, rx_parse, &mut errors);
-        //pool.join();
+        for file in files {
+            let parse_result = interpreter::read_and_parse_file(file).fuse();
+            parse_fut.push(parse_result);
+        }
 
-        self.store_new_scripts(rx_load, scripts_path);
+        let mut errors: Vec<ParseError> = Vec::new();
+
+        loop {
+            select! {
+                parse_res = parse_fut.select_next_some() => {
+                    if let Ok((parse_ret, interpreter)) = parse_res {
+                        errors.extend(parse_ret.1);
+                        let keys = self.get_script_keys(parse_ret.0, interpreter.clone());
+                        load_fut.push(interpreter::load(interpreter, keys).fuse());
+                    }
+                },
+                load_res = load_fut.select_next_some() => {
+                    if let Ok(scripts) = load_res {
+                       self.store_new_scripts(&scripts);
+                    }
+                },
+                complete => break,
+            }
+        }
+
         Ok(errors)
     }
 
-    fn store_new_scripts(
-        &mut self,
-        rx_load: Receiver<Result<Vec<Script>, ScriptEngineError>>,
-        scripts_path: &Path,
-    ) {
-        for result in rx_load.recv().iter() {
-            let scripts = result.as_ref().unwrap();
-            for script in scripts {
-                self.names.insert(script.key, script.name.clone());
-                self.description
-                    .insert(script.key, script.description.clone());
-                self.argument_type
-                    .insert(script.key, script.argument_type.clone());
-                self.argument_descriptions
-                    .insert(script.key, script.argument_descriptions.clone());
-                self.files.insert(script.key, scripts_path.to_path_buf());
-
-                self.send_script_change(script);
-            }
+    fn store_new_scripts(&mut self, scripts: &[Script]) {
+        for script in scripts {
+            self.names.insert(script.key, script.name.clone());
+            self.description
+                .insert(script.key, script.description.clone());
+            self.argument_type
+                .insert(script.key, script.argument_type.clone());
+            self.argument_descriptions
+                .insert(script.key, script.argument_descriptions.clone());
+            self.files.insert(script.key, script.file.to_path_buf());
+            self.send_script_change(script);
         }
     }
 
@@ -197,43 +204,12 @@ impl ScriptEngine {
         self.send_change.send(ScriptChange::New(c_script)).unwrap();
     }
 
-    fn load_files(
-        &mut self,
-        pool: &ThreadPool,
-        files: Vec<PathBuf>,
-        rx_parse: Receiver<Result<(usize, Vec<ParseError>, InterpreterArc), ScriptEngineError>>,
-        parse_errors: &mut Vec<ParseError>,
-    ) -> Receiver<Result<Vec<Script>, ScriptEngineError>> {
-        let mut received_parse = 0;
-        let (tx_load, rx_load) = unbounded();
-        while received_parse < files.len() {
-            println!("rec{} files{}", received_parse, files.len());
-            let result = ScriptEngine::receive_parse_res_or_print(&rx_parse);
-            if let Ok((count, errors, interpreter)) = result {
-                println!("{:?}", errors);
-                parse_errors.extend(errors);
-                let keys = self.get_script_keys(count, interpreter.clone());
-                let tx_load = tx_load.clone();
-                //pool.execute(move || {
-                let result = interpreter::load(interpreter, keys);
-                tx_load.send(result).unwrap();
-                //});
-            } else {
-                println!("afasfds");
-            }
-            received_parse += 1;
-        }
-        rx_load
-    }
-
     fn get_script_keys(&mut self, result: usize, interpreter: InterpreterArc) -> Vec<ScriptKey> {
         let mut keys = Vec::new();
-
         for _ in 0..(result as i32) {
             let key = self.scripts.insert(interpreter.clone());
             keys.push(key);
         }
-
         keys
     }
 
@@ -280,23 +256,6 @@ impl ScriptEngine {
 
     //     Ok(())
     // }
-}
-
-fn parse_files(
-    files: &Vec<PathBuf>,
-    pool: &ThreadPool,
-) -> Receiver<Result<(usize, Vec<ParseError>, InterpreterArc), ScriptEngineError>> {
-    let (tx_parse, rx_parse) = unbounded();
-    for i in 0..files.len() {
-        let tx_parse = tx_parse.clone();
-        let file = files.get(i).unwrap().clone();
-
-        //pool.execute(move || {
-        let result = get_interpreter_for_file(&file).and_then(interpreter::parse_and_interpreter);
-        tx_parse.send(result).unwrap();
-        // });
-    }
-    rx_parse
 }
 
 fn get_files_of_dir(dir: &Path) -> Result<Vec<PathBuf>, ScriptEngineError> {

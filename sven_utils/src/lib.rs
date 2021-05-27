@@ -12,12 +12,14 @@ pub mod sx {
     /// in this case `Global::try_borrow_mut()` returns `None`
     /// # Example
     /// ```
-    /// STATIC myGlobal: Global<Vec<u32>> = Global::new();
-    /// let test = myGlobal.try_borrow_mut();
+    /// use sven_utils::sx::Global;
+    ///
+    /// static MYGLOBAL: Global<Vec<u32>> = Global::new(Vec::new());
+    /// let mut test = MYGLOBAL.try_borrow_mut();
     /// assert!(test.is_some());
-    /// assert_eq!(0, test.unwrap().len());
-    /// let data = test.unwrap();
-    /// data.push(123);
+    /// //assert_eq!(0, (*&test.unwrap()).len());
+    /// //let mut data = test.unwrap();
+    /// //data.push(123);
     /// ````
     /// note: sychronisation is achieved using spinlocks.
     pub struct Global<T> {

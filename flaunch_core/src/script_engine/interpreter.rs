@@ -1,18 +1,8 @@
+use futures::lock::Mutex;
+use tokio::fs;
+
 use crate::script_engine::*;
 use std::any::Any;
-
-#[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
-pub enum InterpreterType {
-    Python,
-}
-
-impl std::fmt::Display for InterpreterType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            InterpreterType::Python => write!(f, "Python"),
-        }
-    }
-}
 
 #[derive(Debug, Default, PartialEq, Clone)]
 pub struct Script {
@@ -38,13 +28,10 @@ pub enum CallError {
     WrongArguments,
 }
 
+pub type ParseResult = (usize, Vec<ParseError>);
 pub trait Interpreter {
     /// parse file and return the number of scripts found
-    fn parse(
-        &mut self,
-        content: &[u8],
-        file: &Path,
-    ) -> Result<(usize, Vec<ParseError>), InterpreterError>;
+    fn parse(&mut self, content: &[u8], file: &Path) -> Result<ParseResult, InterpreterError>;
     /// finish loading. update the keys with actual script keys and return script
     /// information.
     fn load(&mut self, keys: Vec<ScriptKey>) -> Result<Vec<Script>, InterpreterError>;
@@ -52,33 +39,39 @@ pub trait Interpreter {
     fn call(&self, key: ScriptKey, args: &[Box<dyn Any>]) -> Result<(), CallError>;
 }
 
-pub fn parse_and_interpreter(
-    interpreter: InterpreterArc,
-) -> Result<(usize, Vec<ParseError>, InterpreterArc), ScriptEngineError> {
-    match interpreter.lock() {
-        Ok(mut data) => data
-            .parse()
-            .map_err(|e| ScriptEngineError::InterpretError(e.clone()))
-            .map(|(count, errors)| (count, errors, interpreter.clone())),
-        Err(e) => Err(ScriptEngineError::PoisonedMutex(e.to_string())),
-    }
+pub async fn read_and_parse_file(
+    file: PathBuf,
+) -> Result<(ParseResult, InterpreterArc), ScriptEngineError> {
+    let content = fs::read(&file).await.unwrap();
+    let interpreter = create_interpreter_for_file(&file)?;
+    let result = interpreter::parse(&interpreter, &content, &file).await?;
+    Ok((result, interpreter.clone()))
 }
 
-pub fn load(
+async fn parse(
+    interpreter: &InterpreterArc,
+    content: &[u8],
+    file: &Path,
+) -> Result<ParseResult, ScriptEngineError> {
+    let mut inter = interpreter.lock().await;
+    (*inter)
+        .parse(content, &file)
+        .map_err(|e| ScriptEngineError::InterpretError(e.clone()))
+}
+
+pub async fn load(
     interpreter: InterpreterArc,
     keys: Vec<ScriptKey>,
 ) -> Result<Vec<Script>, ScriptEngineError> {
-    match interpreter.lock() {
-        Ok(mut data) => data
-            .load(keys)
-            .map_err(|e| ScriptEngineError::InterpretError(e.clone())),
-        Err(e) => Err(ScriptEngineError::PoisonedMutex(e.to_string())),
-    }
+    let mut inter = interpreter.lock().await;
+    (*inter)
+        .load(keys)
+        .map_err(|e| ScriptEngineError::InterpretError(e.clone()))
 }
 
-pub fn get_interpreter_for_file(file: &Path) -> Result<InterpreterArc, ScriptEngineError> {
+pub fn create_interpreter_for_file(file: &Path) -> Result<InterpreterArc, ScriptEngineError> {
     if file.extension().unwrap() == &OsString::from(PYTHON_EXTENSION) {
-        Ok(Arc::new(Mutex::new(PyInterpreter::new(&file))))
+        Ok(Arc::new(Mutex::new(PyInterpreter::new())))
     } else {
         Err(ScriptEngineError::InterpreterNotAvailable(
             file.extension().unwrap().to_os_string(),

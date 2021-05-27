@@ -6,8 +6,7 @@ edition = "2018"
 
 [dependencies]
 flaunch_core = { path = "../flaunch_core" }
-flaunch_ui = { path = "../flaunch_ui" }
-crossbeam= "*"
+tokio = {version = "*", features = ["full"] }
 
 [dependencies.system_uri]
 version = "*"

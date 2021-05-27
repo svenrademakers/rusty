@@ -3,7 +3,6 @@
 members = [
     "flaunch_core",
     "flaunch_cli",
-    "flaunch_ui",
     "flaunch",
     "sven_utils",
 ]

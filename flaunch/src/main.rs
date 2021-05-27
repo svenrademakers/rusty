@@ -1,28 +1,24 @@
 mod app_launcher;
-mod controllers;
 mod system_tray;
 
 #[cfg(target_os = "macos")]
 #[macro_use]
 extern crate objc;
 
-use std::{cell::RefCell, thread};
-use std::{
-    rc::Rc,
-    sync::mpsc::{self, Receiver, Sender},
-};
+use std::path::PathBuf;
 
 use app_launcher::*;
-use controllers::*;
-use flaunch_core::{app_meta, load_settings, script_engine::ScriptEngine};
-use flaunch_core::{load_logging, settings::*};
-use flaunch_ui::run_gui_blocking;
+use flaunch_core::logging::info;
+use flaunch_core::{app_meta, SettingKey};
+use flaunch_core::{load_core_components, settings::*};
 use system_tray::*;
+use tokio::sync::mpsc::{channel, Receiver, Sender};
+use tokio::task::spawn_blocking;
 
 fn run_system_tray_thread() {
-    thread::spawn(|| {
+    spawn_blocking(|| {
         let launcher = AppLauncher::new();
-        let (tx, _rx): (Sender<String>, Receiver<String>) = mpsc::channel();
+        let (tx, _rx): (Sender<String>, Receiver<String>) = channel(64);
         let mut system_tray = launcher.build_system_tray(tx);
         let cb: NSCallback = Box::new(move |_sender, _tx| {
             let path = format!("file://{}", master_settings().to_string_lossy().to_string());
@@ -42,20 +38,26 @@ fn run_system_tray_thread() {
     });
 }
 
-fn run_logic_thread() {
-    thread::spawn(|| {
-        let settings = Rc::new(RefCell::new(load_settings()));
-        let script_engine = Rc::new(ScriptEngine::new());
-        let mut controllers = Controllers::new(script_engine, settings);
-        loop {
-            controllers.poll();
-        }
-    });
+#[tokio::main]
+async fn main() {
+    let (settings, engine) = load_core_components().await;
+
+    load_all_scripts(settings, engine).await;
+
+    run_system_tray_thread();
 }
 
-fn main() {
-    load_logging();
-    run_logic_thread();
-    run_system_tray_thread();
-    run_gui_blocking();
+async fn load_all_scripts(
+    settings: std::cell::RefCell<Settings<SettingKey>>,
+    mut engine: flaunch_core::script_engine::ScriptEngine,
+) {
+    if let Ok(set) = settings.try_borrow() {
+        if let Some(script_path) = set.get_str(SettingKey::ScriptsDir) {
+            let path = PathBuf::from(script_path);
+            engine.load(&path).await.unwrap();
+            if engine.find("Sven_for_life").is_some() {
+                info!("what a time to be alive");
+            }
+        }
+    }
 }

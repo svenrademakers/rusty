@@ -1,5 +1,5 @@
 use flaunch_core::app_meta;
-use std::sync::mpsc::Sender;
+use tokio::sync::mpsc::Sender;
 
 pub use crate::system_tray::StatusBar;
 pub use crate::system_tray::TStatusBar;

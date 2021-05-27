@@ -1,5 +1,7 @@
 #![allow(unused_variables)]
 
+use tokio::sync::mpsc::Sender;
+
 #[cfg(target_os = "macos")]
 pub mod osx;
 
@@ -44,7 +46,6 @@ pub trait TStatusBar {
     fn run(&mut self, block: bool);
 }
 
-use std::sync::mpsc::Sender;
 pub type NSCallback = Box<dyn Fn(u64, &Sender<String>)>;
 
 pub struct DummyStatusBar {}

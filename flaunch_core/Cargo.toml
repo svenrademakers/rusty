@@ -8,10 +8,10 @@ edition = "2018"
 log = "*"
 json = "*"
 slotmap="*"
-bus= "*"
-crossbeam-channel = "*"
+lazy_static="*"
 app_dirs = { package = "app_dirs2", version = "*" }
-threadpool = "*"
+futures = "*"
+tokio = {version = "*", features = ["full"] }
 
 [build-dependencies]
 git = { package = "git2", version= "*"}

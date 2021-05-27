@@ -23,7 +23,6 @@ use self::rustnsobject::{NSObj, NSObjCallbackTrait, NSObjTrait};
 
 use std::ffi::CStr;
 use std::ptr;
-use std::sync::mpsc::Sender;
 
 pub type Object = objc::runtime::Object;
 use objc::*;

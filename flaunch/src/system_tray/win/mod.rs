@@ -1,5 +1,7 @@
 extern crate systray;
 
+use tokio::sync::mpsc::Sender;
+
 pub use crate::system_tray::NSCallback;
 pub use crate::system_tray::TStatusBar;
 
@@ -7,7 +9,6 @@ use self::systray::api::api::MenuEnableFlag;
 
 use std::collections::BTreeMap;
 use std::process;
-use std::sync::mpsc::Sender;
 
 //pub type Object = objc::runtime::Object;
 pub type Object = u32;
