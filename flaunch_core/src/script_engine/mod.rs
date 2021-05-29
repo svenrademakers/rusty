@@ -1,25 +1,19 @@
 mod interpreter;
 mod py_interpreter;
-
 use crate::logging::*;
 
+use futures::channel::mpsc::Sender;
+use futures::select;
 use futures::stream::FuturesUnordered;
-pub use interpreter::Script;
-use py_interpreter::*;
-use std::ffi::CString;
-use tokio::sync::broadcast::{channel, Receiver, Sender};
-
+use futures::FutureExt;
 use futures::StreamExt;
-use futures::{future::FutureExt, select};
-pub use slotmap::*;
+pub use interpreter::Script;
 use std::path::Path;
-use std::{any::Any, boxed::Box, ffi::OsString, fs::DirEntry, sync::Arc};
+use std::{any::Any, boxed::Box, ffi::OsString, fs::DirEntry};
 
 use std::{path::PathBuf, vec::Vec};
 
-use self::interpreter::InterpreterArc;
-
-const PYTHON_EXTENSION: &str = "py";
+use self::interpreter::ParseError;
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum ArgumentType {
@@ -31,122 +25,34 @@ pub enum ArgumentType {
     List(String),
 }
 
-new_key_type! {pub struct ScriptKey;}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum InterpreterError {
-    Error,
-    NotEnoughKeys { needed: usize, provided: usize },
-}
-
-impl std::fmt::Display for InterpreterError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            InterpreterError::Error => write!(f, "Not good!"),
-            InterpreterError::NotEnoughKeys { needed, provided } => {
-                write!(f, "Needed {} keys. Got {}", needed, provided)
-            }
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum ScriptEngineError {
-    ScriptKeyDoesNotExist(ScriptKey),
-    InterpreterNotAvailable(OsString),
-    MissingArguments(Vec<String>, usize),
-    NoScriptsFound(PathBuf),
-    InterpretError(InterpreterError),
-    PoisonedMutex(String),
-    ErrorMessage(String),
-}
-#[derive(Default, Clone, PartialEq, Debug)]
-pub struct ParseError {
-    pub filename: String,
-    pub message: String,
-    pub traceback: String,
-}
-
-impl<'a> std::fmt::Display for ScriptEngineError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ScriptEngineError::ScriptKeyDoesNotExist(key) => {
-                write!(f, "{:?} does not exist.", key)
-            }
-            ScriptEngineError::InterpreterNotAvailable(x) => {
-                write!(f, "no interpreter to load type {:?}.", x)
-            }
-            ScriptEngineError::MissingArguments(vec, len) => {
-                write!(f, "missing arguments {:?} expected arguments={}", vec, len)
-            }
-            ScriptEngineError::NoScriptsFound(directory) => {
-                write!(f, "no scripts found in {}", directory.to_string_lossy())
-            }
-            ScriptEngineError::InterpretError(error) => {
-                write!(f, "{}", error)
-            }
-            ScriptEngineError::PoisonedMutex(e) => {
-                write!(f, "{}", e)
-            }
-            ScriptEngineError::ErrorMessage(e) => {
-                write!(f, "{}", e)
-            }
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
 pub enum ScriptChange {
-    New(CScript),
+    NewOrUpdated(Vec<Script>),
     Deleted(u64),
 }
 
-#[repr(C)]
-#[derive(Clone, Debug)]
-pub struct CScript {
-    pub key: u64,
-    pub name: CString,
+pub enum ScriptController {
+    Load(PathBuf),
+    Call(u64, Vec<Box<dyn Any>>),
 }
 
-impl<'a> std::error::Error for ScriptEngineError {}
+unsafe impl Send for ScriptChange {}
+unsafe impl Send for ScriptController {}
 
 pub struct ScriptEngine {
-    scripts: SlotMap<ScriptKey, InterpreterArc>,
-    names: SecondaryMap<ScriptKey, String>,
-    description: SecondaryMap<ScriptKey, String>,
-    argument_type: SecondaryMap<ScriptKey, Vec<ArgumentType>>,
-    argument_descriptions: SecondaryMap<ScriptKey, Vec<String>>,
-    files: SecondaryMap<ScriptKey, PathBuf>,
-    recv_change: Receiver<ScriptChange>,
-    send_change: Sender<ScriptChange>,
+    script_sender: Sender<ScriptChange>,
 }
 
 impl ScriptEngine {
-    pub fn new() -> Self {
-        let (send, recv) = channel(64);
+    pub fn new(script_sender: Sender<ScriptChange>) -> Self {
         ScriptEngine {
-            scripts: SlotMap::with_key(),
-            names: SecondaryMap::new(),
-            description: SecondaryMap::new(),
-            argument_type: SecondaryMap::new(),
-            argument_descriptions: SecondaryMap::new(),
-            files: SecondaryMap::new(),
-            recv_change: recv,
-            send_change: send,
+            script_sender: script_sender,
         }
     }
-
-    // pub fn get_receiver(&mut self) -> Receiver<ScriptChange> {
-    //     self.recv_change.clone()
-    // }
 
     pub async fn load(
         &mut self,
         scripts_path: &Path,
     ) -> Result<Vec<ParseError>, ScriptEngineError> {
-        let mut parse_fut = FuturesUnordered::new();
-        let mut load_fut = FuturesUnordered::new();
-
         let files = get_files_of_dir(scripts_path)?;
         if files.is_empty() {
             return Err(ScriptEngineError::NoScriptsFound(
@@ -154,9 +60,11 @@ impl ScriptEngine {
             ));
         }
 
+        let mut parse_fut = FuturesUnordered::new();
         for file in files {
-            let parse_result = interpreter::read_and_parse_file(file).fuse();
-            parse_fut.push(parse_result);
+            info!("loading {}", file.to_string_lossy());
+            let parse_task = interpreter::read_and_parse_file(file).fuse();
+            parse_fut.push(parse_task);
         }
 
         let mut errors: Vec<ParseError> = Vec::new();
@@ -164,17 +72,10 @@ impl ScriptEngine {
         loop {
             select! {
                 parse_res = parse_fut.select_next_some() => {
-                    if let Ok((parse_ret, interpreter)) = parse_res {
-                        errors.extend(parse_ret.1);
-                        let keys = self.get_script_keys(parse_ret.0, interpreter.clone());
-                        load_fut.push(interpreter::load(interpreter, keys).fuse());
-                    }
-                },
-                load_res = load_fut.select_next_some() => {
-                    if let Ok(scripts) = load_res {
-                       self.store_new_scripts(&scripts);
-                    }
-                },
+                    let (scripts, err) = parse_res;
+                    errors.extend(err);
+                    self.process_new_scripts(scripts);
+                }
                 complete => break,
             }
         }
@@ -182,53 +83,14 @@ impl ScriptEngine {
         Ok(errors)
     }
 
-    fn store_new_scripts(&mut self, scripts: &[Script]) {
-        for script in scripts {
-            self.names.insert(script.key, script.name.clone());
-            self.description
-                .insert(script.key, script.description.clone());
-            self.argument_type
-                .insert(script.key, script.argument_type.clone());
-            self.argument_descriptions
-                .insert(script.key, script.argument_descriptions.clone());
-            self.files.insert(script.key, script.file.to_path_buf());
-            self.send_script_change(script);
-        }
+    fn process_new_scripts(&mut self, scripts: Vec<Script>) {
+        self.script_sender
+            .try_send(ScriptChange::NewOrUpdated(scripts))
+            .unwrap();
     }
 
-    fn send_script_change(&mut self, script: &Script) {
-        let c_script = CScript {
-            key: script.key.data().as_ffi(),
-            name: CString::new(script.name.clone()).unwrap(),
-        };
-        self.send_change.send(ScriptChange::New(c_script)).unwrap();
-    }
-
-    fn get_script_keys(&mut self, result: usize, interpreter: InterpreterArc) -> Vec<ScriptKey> {
-        let mut keys = Vec::new();
-        for _ in 0..(result as i32) {
-            let key = self.scripts.insert(interpreter.clone());
-            keys.push(key);
-        }
-        keys
-    }
-
-    /// find key for given name.
-    /// O(n)
-    pub fn find(&self, name: &str) -> Option<ScriptKey> {
-        for k in &self.names {
-            if k.1 == name {
-                return Some(k.0);
-            }
-        }
-        None
-    }
-
-    pub fn call(
-        &self,
-        _script_key: ScriptKey,
-        _args: &[Box<dyn Any>],
-    ) -> Result<bool, ScriptEngineError> {
+    pub fn call(&self, script_key: u64, _args: &[Box<dyn Any>]) -> Result<bool, ScriptEngineError> {
+        info!("Calling script:{}", script_key);
         //     let interpreter = self
         //         .scripts
         //         .get(script_key)
@@ -276,3 +138,102 @@ fn get_files_of_dir(dir: &Path) -> Result<Vec<PathBuf>, ScriptEngineError> {
         Ok(dir) => Ok(dir.filter_map(filter).collect()),
     }
 }
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ScriptEngineError {
+    ScriptKeyDoesNotExist(u64),
+    InterpreterNotAvailable(OsString),
+    MissingArguments(Vec<String>, usize),
+    NoScriptsFound(PathBuf),
+}
+
+impl<'a> std::fmt::Display for ScriptEngineError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ScriptEngineError::ScriptKeyDoesNotExist(key) => {
+                write!(f, "{:?} does not exist.", key)
+            }
+            ScriptEngineError::InterpreterNotAvailable(x) => {
+                write!(f, "no interpreter to load type {:?}.", x)
+            }
+            ScriptEngineError::MissingArguments(vec, len) => {
+                write!(f, "missing arguments {:?} expected arguments={}", vec, len)
+            }
+            ScriptEngineError::NoScriptsFound(directory) => {
+                write!(f, "no scripts found in {}", directory.to_string_lossy())
+            }
+        }
+    }
+}
+
+// #[derive(Debug, Default)]
+// struct ScriptStore {
+//     scripts: HashSet<u64>,
+//     callables: Vec<(u64, Rc<dyn Callable>)>,
+//     names: Vec<(u64, String)>,
+//     description: Vec<(u64, String)>,
+//     argument_type: Vec<(u64, Vec<ArgumentType>)>,
+//     argument_descriptions: Vec<(u64, Vec<String>)>,
+//     files: Vec<(u64, PathBuf)>,
+// }
+
+// impl ScriptStore {
+//     /// requires `ScriptStore::sync` after calling this function.
+//     /// store runs worst-case O(Log(n))
+//     pub fn store_new_scripts(&mut self, scripts: &[Script]) {
+//         for script in scripts {
+//             let key = script.get_key();
+//             if key.is_none() {
+//                 error!("could not generate key");
+//                 continue;
+//             }
+
+//             let key = key.unwrap();
+//             store(self.scripts, key.clone(), script.call_context);
+//             store(self.names, key.clone(), script.name);
+
+//             store(self.description, key.clone(), script.description.clone());
+//             store(
+//                 self.argument_type,
+//                 key.clone(),
+//                 script.argument_type.clone(),
+//             );
+//             store(
+//                 self.argument_descriptions,
+//                 key.clone(),
+//                 script.argument_descriptions.clone(),
+//             );
+//             store(files, key.clone(), script.file.to_path_buf());
+//         }
+//     }
+
+//     fn store<K, V>(vec: &mut Vec<(K, V)>, key: K, val: V) {
+//         if let Ok(index) = vec.binary_search_by_key(&key, |&(a, b)| b) {
+//             vec[index] = (key, val);
+//         } else {
+//             vec.push((key, val));
+//         }
+//     }
+
+//     async fn sync_vec<K, V>(vec: &mut Vec<(K, V)>, keys: &HashSet<u64>) {
+//         vec.sort_by_cached_key(|&(a, b)| b);
+//         //dedup and remove
+//         // verify doc, dedup on sorted list should be fast
+//         vec.dedup_by(|&(a, b)| {
+//             // todo: verify if the last element will be removed if its stale
+//             let remove = keys.contains(a.0);
+//             remove || a.0 == b.0
+//         });
+//     }
+
+//     pub fn sync(&mut self) {
+//         Runtime::block_on(vec![
+//             ScriptStore::sync_vec(&self.callables),
+//             ScriptStore::sync_vec(&self.names),
+//             ScriptStore::sync_vec(&self.description),
+//             ScriptStore::sync_vec(&self.argument_type),
+//             ScriptStore::sync_vec(&self.argument_descriptions),
+//             ScriptStore::sync_vec(&self.files),
+//         ]);
+//     }
+// }

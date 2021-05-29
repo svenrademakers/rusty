@@ -7,6 +7,6 @@ pub const APP_INFO: AppInfo = AppInfo {
 };
 
 pub const APP_NAME: &str = "Flaunch";
-pub const VERSION: &str = "7595fe8";
-pub const BUILD_DATE: &str = "29-5-2021";
+pub const VERSION: &str = "46ff8ff";
+pub const BUILD_DATE: &str = "7-6-2021";
 pub const ICON: &str = "favicon.png";

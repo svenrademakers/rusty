@@ -3,13 +3,9 @@ pub mod logging;
 pub mod script_engine;
 pub mod settings;
 
-use std::cell::RefCell;
-
 use app_meta::*;
 use logging::*;
-use script_engine::ScriptEngine;
 use settings::*;
-use tokio::join;
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum SettingKey {
@@ -40,15 +36,7 @@ pub fn app_setting_defaults() -> Vec<KeyWithDefault<SettingKey>> {
     dict
 }
 
-pub async fn load_core_components() -> (RefCell<Settings<SettingKey>>, ScriptEngine) {
-    load_logging();
-
-    let settings_task = async { RefCell::new(load_settings()) };
-    let engine_task = async { ScriptEngine::new() };
-    join!(settings_task, engine_task)
-}
-
-fn load_logging() {
+pub fn load_logging() {
     if let Err(e) = init_logging(LevelFilter::Debug) {
         println!("error initialising logger! {}", e);
     }
@@ -59,7 +47,7 @@ fn load_logging() {
     info!("--------------------------------------");
 }
 
-fn load_settings() -> Settings<SettingKey> {
+pub fn load_settings() -> Settings<SettingKey> {
     let mut settings = settings::Settings::new(&app_setting_defaults());
     settings.load();
     settings

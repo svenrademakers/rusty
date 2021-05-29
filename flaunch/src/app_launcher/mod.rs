@@ -1,5 +1,5 @@
 use flaunch_core::app_meta;
-use tokio::sync::mpsc::Sender;
+use futures::channel::mpsc::Sender;
 
 pub use crate::system_tray::StatusBar;
 pub use crate::system_tray::TStatusBar;
@@ -24,4 +24,16 @@ pub trait AppLauncherT {
     }
 
     fn configure_url_scheme(scheme: &str, description: &str);
+}
+
+pub struct DummyContainer {}
+impl DummyContainer {
+    pub fn new() -> Self {
+        DummyContainer {}
+    }
+}
+
+impl AppLauncherT for DummyContainer {
+    fn set_resources() {}
+    fn configure_url_scheme(_scheme: &str, _description: &str) {}
 }

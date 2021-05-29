@@ -1,6 +1,6 @@
 #![allow(unused_variables)]
 
-use tokio::sync::mpsc::Sender;
+use futures::channel::mpsc::Sender;
 
 #[cfg(target_os = "macos")]
 pub mod osx;

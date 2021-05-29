@@ -1,5 +1,6 @@
 mod app_launcher;
 mod system_tray;
+mod ui;
 
 #[cfg(target_os = "macos")]
 #[macro_use]
@@ -8,15 +9,17 @@ extern crate objc;
 use std::path::PathBuf;
 
 use app_launcher::*;
-use flaunch_core::logging::info;
-use flaunch_core::{app_meta, SettingKey};
-use flaunch_core::{load_core_components, settings::*};
+use flaunch_core::script_engine::{ScriptChange, ScriptController, ScriptEngine};
+use flaunch_core::{app_meta, load_settings, SettingKey};
+use flaunch_core::{load_logging, settings::*};
+use futures::channel::mpsc::{channel, Receiver, Sender};
+use futures::executor::block_on;
+use futures::{select, StreamExt};
 use system_tray::*;
-use tokio::sync::mpsc::{channel, Receiver, Sender};
-use tokio::task::spawn_blocking;
+use ui::Application;
 
 fn run_system_tray_thread() {
-    spawn_blocking(|| {
+    std::thread::spawn(|| {
         let launcher = AppLauncher::new();
         let (tx, _rx): (Sender<String>, Receiver<String>) = channel(64);
         let mut system_tray = launcher.build_system_tray(tx);
@@ -38,26 +41,71 @@ fn run_system_tray_thread() {
     });
 }
 
-#[tokio::main]
-async fn main() {
-    let (settings, engine) = load_core_components().await;
+pub fn run_logic_thread(sender: Sender<ScriptChange>, mut controller: Receiver<ScriptController>) {
+    std::thread::spawn(move || {
+        block_on(async {
+            let mut engine = ScriptEngine::new(sender);
+            let settings = load_settings();
 
-    load_all_scripts(settings, engine).await;
+            // default load scripts-dir for now
+            if let Some(script_path) = settings.get_str(SettingKey::ScriptsDir) {
+                let path = PathBuf::from(script_path);
+                engine.load(&path).await.unwrap();
+            }
 
-    run_system_tray_thread();
+            loop {
+                select! {
+                    cmd = controller.select_next_some() => controller_adapter(&mut engine, cmd).await,
+                    complete=>break,
+                }
+            }
+        });
+    });
 }
 
-async fn load_all_scripts(
-    settings: std::cell::RefCell<Settings<SettingKey>>,
-    mut engine: flaunch_core::script_engine::ScriptEngine,
-) {
-    if let Ok(set) = settings.try_borrow() {
-        if let Some(script_path) = set.get_str(SettingKey::ScriptsDir) {
-            let path = PathBuf::from(script_path);
-            engine.load(&path).await.unwrap();
-            if engine.find("Sven_for_life").is_some() {
-                info!("what a time to be alive");
-            }
+pub fn run_application(recv: Receiver<ScriptChange>, controller: Sender<ScriptController>) {
+    // let application_id = format!(
+    //     "org.{}.{}",
+    //     app_meta::APP_INFO.name,
+    //     app_meta::APP_INFO.author
+    // );
+
+    // let uiapp = gtk::Application::new(
+    //     Some(application_id.as_str()),
+    //     gio::ApplicationFlags::FLAGS_NONE,
+    // )
+    // .unwrap();
+
+    // uiapp.connect_activate(|app| {
+    //     let (x, r) = channel(4);
+    //     let (x2, r2) = channel(4);
+
+    //     let mut app_container = Application::new(r, x2, app);
+    //     app_container.run();
+    // });
+
+    // uiapp.run(&env::args().collect::<Vec<_>>());
+    let mut app = Application::new(recv, controller);
+    app.run();
+}
+
+async fn controller_adapter(engine: &mut ScriptEngine, cmd: ScriptController) {
+    match cmd {
+        ScriptController::Load(dir) => {
+            engine.load(&dir).await.unwrap();
+        }
+        ScriptController::Call(key, args) => {
+            engine.call(key, &args).unwrap();
         }
     }
+}
+
+fn main() {
+    load_logging();
+    run_system_tray_thread();
+
+    let (engine_tx, engine_rx) = channel(32);
+    let (script_controller_tx, script_controller_rx) = channel(32);
+    run_logic_thread(engine_tx, script_controller_rx);
+    run_application(engine_rx, script_controller_tx);
 }

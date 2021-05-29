@@ -1,6 +1,6 @@
 extern crate systray;
 
-use tokio::sync::mpsc::Sender;
+use futures::sync::mpsc::Sender;
 
 pub use crate::system_tray::NSCallback;
 pub use crate::system_tray::TStatusBar;

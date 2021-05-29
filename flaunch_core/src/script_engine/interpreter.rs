@@ -1,80 +1,117 @@
-use futures::lock::Mutex;
-use tokio::fs;
-
 use crate::script_engine::*;
-use std::any::Any;
+use std::boxed::Box;
+use std::hash::Hasher;
+use std::{any::Any, collections::hash_map::DefaultHasher, hash::Hash};
 
-#[derive(Debug, Default, PartialEq, Clone)]
+use super::py_interpreter::PyInterpreter;
+#[derive(Hash, Debug, Clone)]
+pub enum InterpreterType {
+    Python,
+}
+
+pub trait Callable {
+    fn call(&self, key: u64, args: &[Box<dyn Any>]) -> Result<(), CallError>;
+}
+
+//pub type InterpreterArc = Arc<Mutex<dyn Interpreter + Send>>;
+pub type ParseResult = (Vec<Script>, Vec<ParseError>);
+
+/// Result structure containing found script details.
+/// Returned as part of the `Interpreter::parse` function
 pub struct Script {
-    pub key: ScriptKey,
+    /// required field
     pub name: String,
+    pub call_context: Box<dyn Callable>,
     pub description: String,
     pub argument_type: Vec<ArgumentType>,
     pub argument_descriptions: Vec<String>,
     pub file: PathBuf,
+    pub interpreter_type: InterpreterType,
 }
+unsafe impl Send for Script {}
 
 impl Script {
-    pub fn new(key: ScriptKey) -> Self {
-        let mut script = Script::default();
-        script.key = key;
-        script
+    pub fn new(
+        name: String,
+        call_context: Box<dyn Callable>,
+        interpreter_type: InterpreterType,
+    ) -> Script {
+        Script {
+            name: name,
+            call_context: call_context,
+            description: String::default(),
+            argument_type: Vec::new(),
+            argument_descriptions: Vec::new(),
+            file: PathBuf::new(),
+            interpreter_type: interpreter_type,
+        }
+    }
+
+    pub fn get_key(&mut self) -> Option<u64> {
+        if self.name.is_empty() {
+            return None;
+        }
+
+        let mut hasher = DefaultHasher::new();
+        self.name.hash(&mut hasher);
+        self.file.hash(&mut hasher);
+        self.interpreter_type.hash(&mut hasher);
+        Some(hasher.finish())
     }
 }
 
-pub type InterpreterArc = Arc<Mutex<dyn Interpreter + Send>>;
+#[derive(Default, Clone, PartialEq, Debug)]
+pub struct ParseError {
+    pub filename: String,
+    pub message: String,
+    pub traceback: String,
+}
+
 pub enum CallError {
-    KeyNotPresent(ScriptKey),
+    KeyNotPresent(u64),
     WrongArguments,
 }
 
-pub type ParseResult = (usize, Vec<ParseError>);
 pub trait Interpreter {
-    /// parse file and return the number of scripts found
-    fn parse(&mut self, content: &[u8], file: &Path) -> Result<ParseResult, InterpreterError>;
-    /// finish loading. update the keys with actual script keys and return script
-    /// information.
-    fn load(&mut self, keys: Vec<ScriptKey>) -> Result<Vec<Script>, InterpreterError>;
-
-    fn call(&self, key: ScriptKey, args: &[Box<dyn Any>]) -> Result<(), CallError>;
+    /// Parses content of a given file and returns a list of found scripts.
+    /// This function should be dumb and straight forward.
+    /// The script engine will figure out itself the diff and update accordingly.
+    ///
+    /// # Hashing
+    /// Hashes are the main keys to index scripts in the system.
+    /// Implementors need to make sure to create unique and deterministic hashes
+    /// that dont collide with other scripts. This includes scripts created by
+    /// other interpreters.
+    /// Adviced is to add a key unique to this interpreter to the hash.
+    ///
+    /// # call_context
+    /// behavior
+    /// `Vec<ParseError>` contains a list of parse errors found by the interpreter runtime
+    fn parse(&self, content: &[u8], file: &Path) -> ParseResult;
 }
 
-pub async fn read_and_parse_file(
-    file: PathBuf,
-) -> Result<(ParseResult, InterpreterArc), ScriptEngineError> {
-    let content = fs::read(&file).await.unwrap();
-    let interpreter = create_interpreter_for_file(&file)?;
-    let result = interpreter::parse(&interpreter, &content, &file).await?;
-    Ok((result, interpreter.clone()))
-}
-
-async fn parse(
-    interpreter: &InterpreterArc,
-    content: &[u8],
-    file: &Path,
-) -> Result<ParseResult, ScriptEngineError> {
-    let mut inter = interpreter.lock().await;
-    (*inter)
-        .parse(content, &file)
-        .map_err(|e| ScriptEngineError::InterpretError(e.clone()))
-}
-
-pub async fn load(
-    interpreter: InterpreterArc,
-    keys: Vec<ScriptKey>,
-) -> Result<Vec<Script>, ScriptEngineError> {
-    let mut inter = interpreter.lock().await;
-    (*inter)
-        .load(keys)
-        .map_err(|e| ScriptEngineError::InterpretError(e.clone()))
-}
-
-pub fn create_interpreter_for_file(file: &Path) -> Result<InterpreterArc, ScriptEngineError> {
-    if file.extension().unwrap() == &OsString::from(PYTHON_EXTENSION) {
-        Ok(Arc::new(Mutex::new(PyInterpreter::new())))
-    } else {
-        Err(ScriptEngineError::InterpreterNotAvailable(
-            file.extension().unwrap().to_os_string(),
-        ))
+pub async fn read_and_parse_file(file: PathBuf) -> ParseResult {
+    let content = std::fs::read(&file).unwrap();
+    match select_interpreter_for_file(&file) {
+        Ok(it) => it.parse(&content, &file),
+        Err(e) => {
+            debug!("{}", e);
+            ParseResult::default()
+        }
     }
 }
+
+pub fn select_interpreter_for_file(
+    file: &Path,
+) -> Result<&'static dyn Interpreter, ScriptEngineError> {
+    let file_ext = file.extension().unwrap().to_str().unwrap();
+
+    match file_ext {
+        "py" => Ok(&PYINTERPRETER),
+        _ => Err(ScriptEngineError::InterpreterNotAvailable(
+            file.extension().unwrap().to_os_string(),
+        )),
+    }
+}
+
+static PYINTERPRETER: PyInterpreter = PyInterpreter {};

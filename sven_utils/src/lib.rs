@@ -1,8 +1,12 @@
 pub mod sx {
 
     use std::{
+        borrow::{Borrow, BorrowMut},
         cell::{RefCell, RefMut},
-        ops::{Deref, DerefMut},
+        collections::{HashMap, HashSet},
+        hash::Hash,
+        ops::{Deref, DerefMut, Index, IndexMut},
+        rc::Rc,
     };
 
     /// Global is an struct that can be used as an static global.
@@ -82,4 +86,34 @@ pub mod sx {
             unsafe { self.lock.force_unlock() };
         }
     }
+
+    #[derive(Debug, Clone)]
+    pub struct GenerationKey<T> {
+        data: T,
+        generation: u8,
+    }
+
+    // pub struct EntityMap<K> {
+    //     map: HashMap<K, V>,
+    // }
+
+    // impl<K: Eq + Hash, V> EntityMap<K, V> {
+    //     pub fn new() -> Self {
+    //         EntityMap {
+    //             map: HashMap::new(),
+    //         }
+    //     }
+
+    //     pub fn insert(&mut self, key: K, value: V) {
+    //         self.map.borrow_mut().insert(key, value);
+    //     }
+
+    //     pub fn get_keys(&self) -> Vec<K> {
+    //         Vec::new()
+    //     }
+
+    //     pub fn create_transaction(&self) -> SyncTransaction<K, V> {
+    //         SyncTransaction::new(&self.map)
+    //     }
+    // }
 }

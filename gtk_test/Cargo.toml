@@ -1,9 +1,12 @@
 [package]
-name = "sven_utils"
+name = "gtk_test"
 version = "0.1.0"
 authors = ["Sven Rademakers <sven.rademakers@gmail.com>"]
 edition = "2018"
-
 [dependencies]
-spin="*"
+gtk-sys="*"
+glib-sys="*"
 
+[dependencies.gtk]
+version = ""
+features = ["v3_16"]

@@ -4,7 +4,7 @@ members = [
     "flaunch_core",
     "flaunch_cli",
     "flaunch",
-    "sven_utils",
+    "gtk_test",
 ]
 
 [profile.dev]
