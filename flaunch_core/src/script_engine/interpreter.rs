@@ -18,10 +18,11 @@ pub type ParseResult = (Vec<Script>, Vec<ParseError>);
 
 /// Result structure containing found script details.
 /// Returned as part of the `Interpreter::parse` function
+#[derive(Debug, Clone)]
 pub struct Script {
     /// required field
     pub name: String,
-    pub call_context: Box<dyn Callable>,
+    // pub call_context: Box<dyn Callable>,
     pub description: String,
     pub argument_type: Vec<ArgumentType>,
     pub argument_descriptions: Vec<String>,
@@ -38,7 +39,7 @@ impl Script {
     ) -> Script {
         Script {
             name: name,
-            call_context: call_context,
+            // call_context: call_context,
             description: String::default(),
             argument_type: Vec::new(),
             argument_descriptions: Vec::new(),

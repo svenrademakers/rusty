@@ -6,9 +6,10 @@ edition = "2018"
 
 [dependencies]
 flaunch_core = { path = "../flaunch_core" }
-gtk-sys= "*"
-glib-sys= "*"
 futures= "*"
+tokio = { version = "*", features = ["sync", "process"] }
+tokio-stream= { version = "*", features = ["sync"] }
+once_cell="*"
 
 [dependencies.system_uri]
 version = "*"
@@ -31,10 +32,8 @@ objc_id = "0.1"
 version = "0.2"
 features = ["exception"]
 
-[dependencies.gtk]
-version = ""
-features = ["v3_14"]
+[dependencies.glib]
+git = "https://github.com/gtk-rs/gtk-rs-core"
 
-[dependencies.gio]
-version = ""
-features = ["v2_44"]
+[dependencies.gtk]
+git = "https://github.com/gtk-rs/gtk3-rs.git"

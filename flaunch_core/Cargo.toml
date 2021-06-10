@@ -9,6 +9,8 @@ log = "*"
 json = "*"
 app_dirs = { package = "app_dirs2", version = "*" }
 futures="*"
+tokio = { version = "*", features = ["sync", "macros"] }
+tokio-stream= { version = "*", features = ["sync"] }
 
 [build-dependencies]
 git = { package = "git2", version= "*"}

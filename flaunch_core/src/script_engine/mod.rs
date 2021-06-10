@@ -2,7 +2,6 @@ mod interpreter;
 mod py_interpreter;
 use crate::logging::*;
 
-use futures::channel::mpsc::Sender;
 use futures::select;
 use futures::stream::FuturesUnordered;
 use futures::FutureExt;
@@ -10,6 +9,7 @@ use futures::StreamExt;
 pub use interpreter::Script;
 use std::path::Path;
 use std::{any::Any, boxed::Box, ffi::OsString, fs::DirEntry};
+use tokio::sync::watch::Sender;
 
 use std::{path::PathBuf, vec::Vec};
 
@@ -25,11 +25,13 @@ pub enum ArgumentType {
     List(String),
 }
 
+#[derive(Debug, Clone)]
 pub enum ScriptChange {
     NewOrUpdated(Vec<Script>),
     Deleted(u64),
 }
 
+#[derive(Debug)]
 pub enum ScriptController {
     Load(PathBuf),
     Call(u64, Vec<Box<dyn Any>>),
@@ -85,7 +87,7 @@ impl ScriptEngine {
 
     fn process_new_scripts(&mut self, scripts: Vec<Script>) {
         self.script_sender
-            .try_send(ScriptChange::NewOrUpdated(scripts))
+            .send(ScriptChange::NewOrUpdated(scripts))
             .unwrap();
     }
 
