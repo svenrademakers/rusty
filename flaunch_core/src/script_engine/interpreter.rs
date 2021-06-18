@@ -1,6 +1,7 @@
 use crate::script_engine::*;
 use std::boxed::Box;
 use std::hash::Hasher;
+use std::rc::Rc;
 use std::{any::Any, collections::hash_map::DefaultHasher, hash::Hash};
 
 use super::py_interpreter::PyInterpreter;
@@ -9,12 +10,9 @@ pub enum InterpreterType {
     Python,
 }
 
-pub trait Callable {
+pub trait Callable: Debug {
     fn call(&self, key: u64, args: &[Box<dyn Any>]) -> Result<(), CallError>;
 }
-
-//pub type InterpreterArc = Arc<Mutex<dyn Interpreter + Send>>;
-pub type ParseResult = (Vec<Script>, Vec<ParseError>);
 
 /// Result structure containing found script details.
 /// Returned as part of the `Interpreter::parse` function
@@ -22,7 +20,6 @@ pub type ParseResult = (Vec<Script>, Vec<ParseError>);
 pub struct Script {
     /// required field
     pub name: String,
-    // pub call_context: Box<dyn Callable>,
     pub description: String,
     pub argument_type: Vec<ArgumentType>,
     pub argument_descriptions: Vec<String>,
@@ -32,14 +29,9 @@ pub struct Script {
 unsafe impl Send for Script {}
 
 impl Script {
-    pub fn new(
-        name: String,
-        call_context: Box<dyn Callable>,
-        interpreter_type: InterpreterType,
-    ) -> Script {
+    pub fn new(name: String, interpreter_type: InterpreterType) -> Script {
         Script {
             name: name,
-            // call_context: call_context,
             description: String::default(),
             argument_type: Vec::new(),
             argument_descriptions: Vec::new(),
@@ -48,7 +40,7 @@ impl Script {
         }
     }
 
-    pub fn get_key(&mut self) -> Option<u64> {
+    pub fn get_key(&self) -> Option<u64> {
         if self.name.is_empty() {
             return None;
         }
@@ -68,10 +60,13 @@ pub struct ParseError {
     pub traceback: String,
 }
 
+#[derive(Debug)]
 pub enum CallError {
     KeyNotPresent(u64),
     WrongArguments,
 }
+
+pub type ParseResult = (Vec<Script>, Vec<(u64, Rc<dyn Callable>)>, Vec<ParseError>);
 
 pub trait Interpreter {
     /// Parses content of a given file and returns a list of found scripts.

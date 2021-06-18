@@ -1,4 +1,9 @@
+use std::{cell::RefCell, rc::Rc};
+
+use flaunch_core::script_engine::{ScriptChange, ScriptEngine};
+use glib::subclass::types::ObjectSubclassExt;
 use gtk::glib;
+use tokio::sync::watch;
 
 use crate::application::{self};
 
@@ -11,23 +16,34 @@ impl MainWindow {
     pub fn new(app: &application::Application) -> Self {
         glib::Object::new(&[("application", app)]).expect("Failed to create MainWindow")
     }
+
+    pub fn init(
+        &self,
+        script_model: watch::Receiver<ScriptChange>,
+        script_engine: Rc<RefCell<ScriptEngine>>,
+    ) {
+        let priv_ = imp::MainWindow::from_instance(self);
+        priv_.init(script_model, script_engine);
+    }
 }
 
 pub mod imp {
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
     use crate::watch_pool;
     use flaunch_core::app_meta;
-    use flaunch_core::script_engine::{ScriptChange, ScriptController};
+    use flaunch_core::script_engine::{Script, ScriptChange, ScriptEngine};
     use gtk::glib;
     use gtk::prelude::*;
     use gtk::subclass::prelude::*;
-    use once_cell::unsync::OnceCell;
-    use tokio::sync::{mpsc, watch};
+    use once_cell::sync::OnceCell;
+    use tokio::sync::watch;
 
     #[derive(Debug, Default)]
     pub struct MainWindow {
         script_listbox: gtk::ListBox,
-        script_controller: OnceCell<mpsc::Sender<ScriptController>>,
-        script_model: OnceCell<watch::Receiver<ScriptChange>>,
+        script_engine: OnceCell<Rc<RefCell<ScriptEngine>>>,
     }
 
     #[glib::object_subclass]
@@ -59,24 +75,49 @@ pub mod imp {
     }
 
     impl MainWindow {
-        pub fn subscribe_models(&self, recv: watch::Receiver<ScriptChange>) {
-            let wind = self.instance();
-            watch_pool::watch(recv, move |change| {
-                let priv_ = MainWindow::from_instance(&wind);
-                match change {
-                    ScriptChange::NewOrUpdated(vec) => {
-                        for ch in vec {
-                            let btn = gtk::Button::with_label(ch.name.as_str());
-                            priv_.script_listbox.add(&btn);
-                        }
+        pub fn init(
+            &self,
+            script_model: watch::Receiver<ScriptChange>,
+            script_engine: Rc<RefCell<ScriptEngine>>,
+        ) {
+            self.script_engine.set(script_engine).unwrap();
+            self.watch_script_model_changes(script_model);
+        }
 
-                        priv_.script_listbox.show_all();
-                    }
-                    ScriptChange::Deleted(x) => (),
+        fn watch_script_model_changes(&self, script_model: watch::Receiver<ScriptChange>) {
+            let wind = self.instance();
+
+            watch_pool::watch(script_model, move |change| {
+                match change {
+                    ScriptChange::NewOrUpdated(vec) => on_new_script(vec, wind.clone()),
+                    ScriptChange::Deleted(_x) => todo!(),
                 }
 
+                let priv_ = MainWindow::from_instance(&wind);
+                priv_.script_listbox.show_all();
                 true
             });
+        }
+    }
+
+    fn on_new_script(vec: &Vec<Script>, wind: super::MainWindow) {
+        for ch in vec {
+            let btn = gtk::Button::with_label(ch.name.as_str());
+            let key = ch.get_key().unwrap();
+            let w = wind.clone();
+            btn.connect_clicked(move |_| {
+                let priv_ = MainWindow::from_instance(&w);
+                priv_
+                    .script_engine
+                    .get()
+                    .unwrap()
+                    .borrow()
+                    .call(key, &Vec::new())
+                    .unwrap();
+            });
+
+            let priv_ = MainWindow::from_instance(&wind);
+            priv_.script_listbox.add(&btn);
         }
     }
 

@@ -1,14 +1,17 @@
-use crate::main_window::{imp, MainWindow};
+use std::cell::RefCell;
+use std::rc::Rc;
+
+use crate::main_window::MainWindow;
 use crate::system_tray::run_system_tray_thread;
-use flaunch_core::script_engine::ScriptChange;
-use flaunch_core::{app_meta, run_logic_thread};
+use flaunch_core::script_engine::{ScriptChange, ScriptEngine};
+use flaunch_core::{app_meta, load_core_components};
 use gtk::gio;
 use gtk::gio::ApplicationFlags;
 use gtk::glib;
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
 use once_cell::unsync::OnceCell;
-use tokio::sync::{mpsc, watch};
+use tokio::sync::watch;
 
 glib::wrapper! {
     pub struct Application(ObjectSubclass<FlaunchApp>)
@@ -34,6 +37,8 @@ impl Application {
 #[derive(Default)]
 pub struct FlaunchApp {
     window: OnceCell<MainWindow>,
+    pub script_engine: Rc<RefCell<ScriptEngine>>,
+    pub script_model: OnceCell<watch::Receiver<ScriptChange>>,
 }
 
 #[glib::object_subclass]
@@ -59,21 +64,40 @@ impl ApplicationImpl for FlaunchApp {
 
     fn startup(&self, app: &Self::Type) {
         self.parent_startup(app);
+        run_system_tray_thread();
 
         let app = app.downcast_ref::<Application>().unwrap();
         let priv_ = FlaunchApp::from_instance(app);
-        let (tx_control, rx_control) = mpsc::channel(32);
-        let (tx_script_m, rx_script_m) = watch::channel(ScriptChange::Deleted(0));
-        let (tx_exit, rx_exit) = watch::channel(false);
-
-        run_logic_thread(tx_script_m, rx_control, rx_exit);
-        run_system_tray_thread();
 
         let window = MainWindow::new(&app);
-        imp::MainWindow::from_instance(&window).subscribe_models(rx_script_m);
-        window.show();
         priv_.window.set(window).unwrap();
+
+        let context = glib::MainContext::default();
+        let self_ = self.instance();
+        context.spawn_local(async move {
+            let engine = load_core_components().await;
+            let receiver = engine.observe();
+            let app = FlaunchApp::from_instance(&self_);
+            app.script_engine.replace(engine);
+
+            app.window
+                .get()
+                .unwrap()
+                .init(receiver, app.script_engine.clone());
+        });
     }
 }
 
 impl GtkApplicationImpl for FlaunchApp {}
+
+// static PROPERTIES: [subclass::Property; 2] = [
+//     subclass::Property("script_model", |name| {
+//         glib::ParamSpec::object(
+//             name,
+//             "script_model",
+//             "no idea what this is",
+//             glib::types::Type::OBJECT(size_of<watch::Receiver<ScriptChange>>()),
+//             glib::ParamFlags::READWRITE,
+//         )
+//     })
+// ];
