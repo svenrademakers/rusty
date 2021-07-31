@@ -10,7 +10,7 @@ pub use interpreter::Script;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::path::Path;
-use std::rc::Rc;
+use std::sync::Arc;
 use std::{any::Any, boxed::Box, ffi::OsString, fs::DirEntry};
 use tokio::sync::watch;
 use tokio::sync::watch::Receiver;
@@ -50,9 +50,9 @@ unsafe impl Send for ScriptController {}
 pub struct ScriptEngine {
     script_sender: Sender<ScriptChange>,
     script_receiver: Receiver<ScriptChange>,
-    call_map: HashMap<u64, Rc<dyn Callable>>,
+    call_map: HashMap<u64, Arc<dyn Callable>>,
 }
-// unsafe impl Send for ScriptEngine {}
+unsafe impl Send for ScriptEngine {}
 
 impl Default for ScriptEngine {
     fn default() -> Self {
@@ -106,7 +106,7 @@ impl ScriptEngine {
         Ok(errors)
     }
 
-    fn insert_callables(&mut self, callables: Vec<(u64, Rc<dyn Callable>)>) {
+    fn insert_callables(&mut self, callables: Vec<(u64, Arc<dyn Callable>)>) {
         for call in callables {
             self.call_map.insert(call.0, call.1);
         }
@@ -195,7 +195,7 @@ impl<'a> std::fmt::Display for ScriptEngineError {
 // #[derive(Debug, Default)]
 // struct ScriptStore {
 //     scripts: HashSet<u64>,
-//     callables: Vec<(u64, Rc<dyn Callable>)>,
+//     callables: Vec<(u64, Arc<dyn Callable>)>,
 //     names: Vec<(u64, String)>,
 //     description: Vec<(u64, String)>,
 //     argument_type: Vec<(u64, Vec<ArgumentType>)>,

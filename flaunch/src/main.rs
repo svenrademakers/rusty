@@ -1,8 +1,8 @@
 mod app_launcher;
 mod application;
+mod application_controllers;
 mod main_window;
 mod system_tray;
-mod watch_pool;
 
 #[cfg(target_os = "macos")]
 #[macro_use]

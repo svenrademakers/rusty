@@ -10,6 +10,7 @@ futures= "*"
 tokio = { version = "*", features = ["sync", "process"] }
 tokio-stream= { version = "*", features = ["sync"] }
 once_cell="*"
+notify= "*"
 
 [dependencies.system_uri]
 version = "*"

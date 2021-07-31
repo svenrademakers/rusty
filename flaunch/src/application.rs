@@ -1,17 +1,18 @@
-use std::cell::RefCell;
-use std::rc::Rc;
-
+use crate::application_controllers::register_sender_receiver;
 use crate::main_window::MainWindow;
 use crate::system_tray::run_system_tray_thread;
-use flaunch_core::script_engine::{ScriptChange, ScriptEngine};
+use flaunch_core::logging::info;
+use flaunch_core::script_engine::ScriptEngine;
 use flaunch_core::{app_meta, load_core_components};
+use futures::executor::block_on;
 use gtk::gio;
 use gtk::gio::ApplicationFlags;
 use gtk::glib;
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
 use once_cell::unsync::OnceCell;
-use tokio::sync::watch;
+use tokio::select;
+use tokio::sync::mpsc::Receiver;
 
 glib::wrapper! {
     pub struct Application(ObjectSubclass<FlaunchApp>)
@@ -37,8 +38,6 @@ impl Application {
 #[derive(Default)]
 pub struct FlaunchApp {
     window: OnceCell<MainWindow>,
-    pub script_engine: Rc<RefCell<ScriptEngine>>,
-    pub script_model: OnceCell<watch::Receiver<ScriptChange>>,
 }
 
 #[glib::object_subclass]
@@ -66,38 +65,49 @@ impl ApplicationImpl for FlaunchApp {
         self.parent_startup(app);
         run_system_tray_thread();
 
-        let app = app.downcast_ref::<Application>().unwrap();
-        let priv_ = FlaunchApp::from_instance(app);
-
-        let window = MainWindow::new(&app);
-        priv_.window.set(window).unwrap();
-
-        let context = glib::MainContext::default();
         let self_ = self.instance();
-        context.spawn_local(async move {
-            let engine = load_core_components().await;
-            let receiver = engine.observe();
-            let app = FlaunchApp::from_instance(&self_);
-            app.script_engine.replace(engine);
+        let engine = block_on(load_core_components());
+        register_sender_receiver(engine.observe());
 
-            app.window
-                .get()
-                .unwrap()
-                .init(receiver, app.script_engine.clone());
-        });
+        let (script_send, script_recv) = tokio::sync::mpsc::channel(64);
+        register_sender_receiver(script_send);
+        run_logic_thread(engine, script_recv);
+
+        let window = MainWindow::new(&self_);
+        let priv_ = FlaunchApp::from_instance(&self_);
+        priv_.window.set(window).unwrap();
     }
 }
 
 impl GtkApplicationImpl for FlaunchApp {}
 
-// static PROPERTIES: [subclass::Property; 2] = [
-//     subclass::Property("script_model", |name| {
-//         glib::ParamSpec::object(
-//             name,
-//             "script_model",
-//             "no idea what this is",
-//             glib::types::Type::OBJECT(size_of<watch::Receiver<ScriptChange>>()),
-//             glib::ParamFlags::READWRITE,
-//         )
-//     })
-// ];
+pub enum ScriptEngineCmd {
+    Call(u64),
+}
+
+impl std::fmt::Debug for ScriptEngineCmd {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ScriptEngineCmd::Call(x) => write!(f, "Call({})", x),
+        }
+    }
+}
+
+pub fn run_logic_thread(engine: ScriptEngine, mut script_cmd: Receiver<ScriptEngineCmd>) {
+    std::thread::spawn(move || {
+        futures::executor::block_on(async {
+            loop {
+                let cmd = script_cmd.recv().await.unwrap();
+                process_cmd(&engine, cmd);
+            }
+        })
+    });
+}
+
+fn process_cmd(engine: &ScriptEngine, cmd: ScriptEngineCmd) {
+    match cmd {
+        ScriptEngineCmd::Call(key) => {
+            let _res = engine.call(key, &Vec::new()).unwrap();
+        }
+    }
+}

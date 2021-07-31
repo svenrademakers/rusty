@@ -1,7 +1,6 @@
 use crate::script_engine::*;
 use std::boxed::Box;
 use std::hash::Hasher;
-use std::rc::Rc;
 use std::{any::Any, collections::hash_map::DefaultHasher, hash::Hash};
 
 use super::py_interpreter::PyInterpreter;
@@ -66,7 +65,7 @@ pub enum CallError {
     WrongArguments,
 }
 
-pub type ParseResult = (Vec<Script>, Vec<(u64, Rc<dyn Callable>)>, Vec<ParseError>);
+pub type ParseResult = (Vec<Script>, Vec<(u64, Arc<dyn Callable>)>, Vec<ParseError>);
 
 pub trait Interpreter {
     /// Parses content of a given file and returns a list of found scripts.

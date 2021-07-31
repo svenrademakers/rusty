@@ -1,7 +1,6 @@
 extern crate pyo3;
 
 use std::collections::HashMap;
-use std::rc::Rc;
 use std::{any::TypeId, ffi::OsStr};
 
 use crate::script_engine::interpreter::*;
@@ -18,7 +17,7 @@ pub struct PyInterpreter {}
 impl Interpreter for PyInterpreter {
     fn parse(&self, content: &[u8], file: &Path) -> ParseResult {
         let mut scripts = Vec::new();
-        let mut callables: Vec<(u64, Rc<dyn Callable>)> = Vec::new();
+        let mut callables: Vec<(u64, Arc<dyn Callable>)> = Vec::new();
         let mut errors = Vec::new();
 
         let filename = file.to_string_lossy().to_string();
@@ -50,7 +49,7 @@ impl Interpreter for PyInterpreter {
                 }
             }
             let keys = py_call.keys();
-            let rc: Rc<dyn Callable> = Rc::new(py_call);
+            let rc: Arc<dyn Callable> = Arc::new(py_call);
             callables = keys.iter().map(|key| (key.clone(), rc.clone())).collect();
         }
 
@@ -145,7 +144,8 @@ mod tests {
         );
 
         assert_eq!(result.0.len(), 0);
-        assert_eq!(result.1.len(), 1);
+        assert_eq!(result.1.len(), 0);
+        assert_eq!(result.2.len(), 1);
     }
 
     #[test]
@@ -173,5 +173,29 @@ mod tests {
         assert_eq!(scripts[1].file, PathBuf::from("/my/path/sven.py"));
         assert!(scripts[1].description.is_empty());
         assert!(scripts[1].argument_type.is_empty());
+
+        assert_eq!(callables.len(), 2);
+        assert!(callables
+            .iter()
+            .find(|x| { x.0 == scripts[0].get_key().unwrap() })
+            .is_some());
+        assert!(callables
+            .iter()
+            .find(|x| { x.0 == scripts[1].get_key().unwrap() })
+            .is_some());
+    }
+
+    #[test]
+    fn keys_are_the_same() {
+        let py_interpreter = PyInterpreter::default();
+        let (scripts, _callables, _errors) = py_interpreter.parse(
+            concat!(
+                "def test_123(wat):\n\t\"\"\"this is a test",
+                " doc\"\"\"\n\tprint(\"hoi\")\n",
+            )
+            .as_bytes(),
+            &std::path::PathBuf::from("/my/path/sven.py"),
+        );
+        assert_eq!(scripts[0].get_key(), scripts[0].get_key());
     }
 }

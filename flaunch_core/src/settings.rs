@@ -6,10 +6,11 @@ pub use json::JsonValue;
 use logging::*;
 use std::hash::Hash;
 use std::marker::Copy;
+use std::path::PathBuf;
 use std::{cmp::Eq, collections::HashMap};
+use tokio::sync::watch;
 
 pub type KeyWithDefault<Key> = (Key, &'static str, JsonValue);
-pub type SettingsReloaded<T> = dyn Fn(&T);
 
 pub struct Settings<Key>
 where
@@ -21,7 +22,12 @@ where
     settings: HashMap<Key, JsonValue>,
     /// mapping from textual json key to rust enum key
     mapping: HashMap<&'static str, Key>,
+    channel: (
+        watch::Sender<SettingsChanged>,
+        watch::Receiver<SettingsChanged>,
+    ),
 }
+pub struct SettingsChanged(PathBuf);
 
 impl<Key> Settings<Key>
 where
@@ -31,6 +37,7 @@ where
         let mut set = Settings::<Key> {
             settings: HashMap::new(),
             mapping: HashMap::new(),
+            channel: watch::channel(SettingsChanged(PathBuf::new())),
         };
 
         for (key, json_key, default) in key_mapping {
@@ -40,9 +47,17 @@ where
         set
     }
 
+    pub fn observe(&self) -> watch::Receiver<SettingsChanged> {
+        self.channel.1.clone()
+    }
+
     pub fn load(&mut self) {
         let settings_file = master_settings();
-        debug!("master_settings file = {}", settings_file.to_string_lossy());
+        debug!(
+            "{}= master_settings file = {}",
+            module_path!(),
+            settings_file.to_string_lossy()
+        );
         if settings_file.exists() {
             self.from_json(&settings_file.to_string_lossy().to_string());
         }

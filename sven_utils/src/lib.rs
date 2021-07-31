@@ -6,7 +6,7 @@ pub mod sx {
         collections::{HashMap, HashSet},
         hash::Hash,
         ops::{Deref, DerefMut, Index, IndexMut},
-        rc::Rc,
+        rc::Arc,
     };
 
     /// Global is an struct that can be used as an static global.
