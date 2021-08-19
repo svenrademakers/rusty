@@ -7,6 +7,7 @@ use super::py_interpreter::PyInterpreter;
 #[derive(Hash, Debug, Clone)]
 pub enum InterpreterType {
     Python,
+    Alias,
 }
 
 pub trait Callable: Debug {
@@ -63,6 +64,7 @@ pub struct ParseError {
 pub enum CallError {
     KeyNotPresent(u64),
     WrongArguments,
+    NotSuccessful(String),
 }
 
 pub type ParseResult = (Vec<Script>, Vec<(u64, Arc<dyn Callable>)>, Vec<ParseError>);

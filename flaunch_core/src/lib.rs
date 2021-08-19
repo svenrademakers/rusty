@@ -15,6 +15,7 @@ pub enum SettingKey {
     // path to the folder to watch. containing the actual scripts.
     ScriptsDir,
     FolderScan,
+    LoadAliases,
 }
 
 pub fn app_setting_defaults() -> Vec<KeyWithDefault<SettingKey>> {
@@ -35,6 +36,8 @@ pub fn app_setting_defaults() -> Vec<KeyWithDefault<SettingKey>> {
         "folder_scan",
         JsonValue::Boolean(true),
     ));
+
+    dict.push((SettingKey::LoadAliases, "aliases", JsonValue::Boolean(true)));
 
     dict
 }
@@ -57,13 +60,23 @@ pub fn load_settings() -> Settings<SettingKey> {
 }
 
 pub async fn load_core_components() -> ScriptEngine {
-    let mut engine = ScriptEngine::default();
+    let engine = ScriptEngine::default();
     let settings = load_settings();
 
     // default load scripts-dir for now
     if let Some(script_path) = settings.get_str(SettingKey::ScriptsDir) {
         let path = PathBuf::from(script_path);
-        engine.load(&path).await.unwrap();
+        let fut = engine.load_path(&path);
+
+        if let Some(load_alias) = settings.get_bool(SettingKey::LoadAliases) {
+            if load_alias {
+                #[cfg(target_family = "unix")]
+                let _ = futures::join!(engine.load_aliases(), fut);
+            }
+        } else {
+            fut.await.unwrap();
+        }
     }
+
     engine
 }

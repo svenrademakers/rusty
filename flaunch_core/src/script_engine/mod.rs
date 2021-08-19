@@ -1,7 +1,9 @@
+mod alias_interpreter;
 mod interpreter;
 mod py_interpreter;
 use crate::logging::*;
 
+use futures::lock::Mutex;
 use futures::select;
 use futures::stream::FuturesUnordered;
 use futures::FutureExt;
@@ -50,9 +52,8 @@ unsafe impl Send for ScriptController {}
 pub struct ScriptEngine {
     script_sender: Sender<ScriptChange>,
     script_receiver: Receiver<ScriptChange>,
-    call_map: HashMap<u64, Arc<dyn Callable>>,
+    call_map: Mutex<HashMap<u64, Arc<dyn Callable>>>,
 }
-unsafe impl Send for ScriptEngine {}
 
 impl Default for ScriptEngine {
     fn default() -> Self {
@@ -61,7 +62,7 @@ impl Default for ScriptEngine {
         ScriptEngine {
             script_sender: s,
             script_receiver: r,
-            call_map: HashMap::new(),
+            call_map: Mutex::new(HashMap::new()),
         }
     }
 }
@@ -71,8 +72,18 @@ impl ScriptEngine {
         self.script_receiver.clone()
     }
 
-    pub async fn load(
-        &mut self,
+    #[cfg(target_family = "unix")]
+    pub async fn load_aliases(&self) -> Vec<ParseError> {
+        use self::alias_interpreter::AliasInterpreter;
+
+        let (scripts, callables, err) = AliasInterpreter::load();
+        self.insert_callables(callables);
+        self.process_new_scripts(scripts);
+        err
+    }
+
+    pub async fn load_path(
+        &self,
         scripts_path: &Path,
     ) -> Result<Vec<ParseError>, ScriptEngineError> {
         let files = get_files_of_dir(scripts_path)?;
@@ -106,20 +117,26 @@ impl ScriptEngine {
         Ok(errors)
     }
 
-    fn insert_callables(&mut self, callables: Vec<(u64, Arc<dyn Callable>)>) {
+    async fn insert_callables(&self, callables: Vec<(u64, Arc<dyn Callable>)>) {
+        let mut callmap = self.call_map.lock().await;
         for call in callables {
-            self.call_map.insert(call.0, call.1);
+            callmap.insert(call.0, call.1);
         }
     }
 
-    fn process_new_scripts(&mut self, scripts: Vec<Script>) {
+    fn process_new_scripts(&self, scripts: Vec<Script>) {
         self.script_sender
             .send(ScriptChange::NewOrUpdated(scripts))
             .unwrap();
     }
 
-    pub fn call(&self, script_key: u64, args: &[Box<dyn Any>]) -> Result<bool, ScriptEngineError> {
-        if let Some(c) = self.call_map.get(&script_key) {
+    pub async fn call(
+        &self,
+        script_key: u64,
+        args: &[Box<dyn Any>],
+    ) -> Result<bool, ScriptEngineError> {
+        let callmap = self.call_map.lock().await;
+        if let Some(c) = callmap.get(&script_key) {
             info!("{}= Calling script:{}", module_path!(), script_key);
             self.return_on_invalid_arguments(&script_key, args.len())?;
             c.call(script_key, args).unwrap();

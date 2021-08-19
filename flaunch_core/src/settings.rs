@@ -79,6 +79,10 @@ where
         self.settings.get(&setting).map(|x| x.as_str())?
     }
 
+    pub fn get_bool(&self, setting: Key) -> Option<bool> {
+        self.settings.get(&setting).map(|x| x.as_bool())?
+    }
+
     fn from_json(&mut self, settings_file: &str) {
         if let Ok(contents) = std::fs::read_to_string(settings_file) {
             if let Ok(json) = json::parse(contents.as_str()) {
