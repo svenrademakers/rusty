@@ -35,8 +35,11 @@ fn get_git_info() -> (PathBuf, String) {
 
     let mut describe_options = git::DescribeOptions::new();
     describe_options.show_commit_oid_as_fallback(true);
-    let describe = repo.describe(&describe_options).unwrap();
-    let describe_str = describe.format(None).unwrap();
+
+    let mut describe_str = String::from("none");
+    if let Ok(describe) = repo.describe(&describe_options) {
+        describe_str = describe.format(None).unwrap();
+    }
 
     let mut cwd = repo.path().to_path_buf();
     cwd.pop();

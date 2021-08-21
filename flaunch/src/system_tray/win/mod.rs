@@ -1,6 +1,6 @@
 extern crate systray;
 
-use futures::sync::mpsc::Sender;
+use futures::channel::mpsc::Sender;
 
 pub use crate::system_tray::NSCallback;
 pub use crate::system_tray::TStatusBar;
