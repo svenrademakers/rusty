@@ -1,6 +1,7 @@
 mod alias_interpreter;
 mod interpreter;
 mod py_interpreter;
+use crate::file_watcher;
 use crate::logging::*;
 
 use futures::lock::Mutex;
@@ -53,21 +54,26 @@ pub struct ScriptEngine {
     script_sender: Sender<ScriptChange>,
     script_receiver: Receiver<ScriptChange>,
     call_map: Mutex<HashMap<u64, Arc<dyn Callable>>>,
-}
-
-impl Default for ScriptEngine {
-    fn default() -> Self {
-        let (s, r) = watch::channel(ScriptChange::Deleted(0));
-
-        ScriptEngine {
-            script_sender: s,
-            script_receiver: r,
-            call_map: Mutex::new(HashMap::new()),
-        }
-    }
+    scripts: Mutex<HashMap<u64, Script>>,
+    file_lookup: Mutex<HashMap<PathBuf, u64>>,
 }
 
 impl ScriptEngine {
+    fn new(
+        channel: (
+            tokio::sync::mpsc::Sender<ScriptChange>,
+            tokio::sync::mpsc::Receiver<ScriptChange>,
+        ),
+    ) -> Self {
+        ScriptEngine {
+            script_sender: channel.0,
+            script_receiver: channel.1,
+            call_map: Mutex::new(HashMap::new()),
+            scripts: Mutex::new(HashMap::new()),
+            file_lookup: Mutex::new(HashMap::new()),
+        }
+    }
+
     pub fn observe(&self) -> watch::Receiver<ScriptChange> {
         self.script_receiver.clone()
     }
@@ -77,8 +83,10 @@ impl ScriptEngine {
         use self::alias_interpreter::AliasInterpreter;
 
         let (scripts, callables, err) = AliasInterpreter::load();
-        self.insert_callables(callables);
-        self.process_new_scripts(scripts);
+        futures::join!(
+            self.insert_callables(callables),
+            self.process_new_scripts(scripts)
+        );
         err
     }
 
@@ -107,13 +115,15 @@ impl ScriptEngine {
                 parse_res = parse_fut.select_next_some() => {
                     let (scripts, callables, err) = parse_res;
                     errors.extend(err);
-                    self.insert_callables(callables);
-                    self.process_new_scripts(scripts);
+                    // todo spawn on new task?
+                    futures::join!(
+                        self.insert_callables(callables),
+                        self.process_new_scripts(scripts)
+                    );
                 }
                 complete => break,
             }
         }
-
         Ok(errors)
     }
 
@@ -124,10 +134,17 @@ impl ScriptEngine {
         }
     }
 
-    fn process_new_scripts(&self, scripts: Vec<Script>) {
+    async fn process_new_scripts(&self, scripts: Vec<Script>) {
         self.script_sender
-            .send(ScriptChange::NewOrUpdated(scripts))
+            .send(ScriptChange::NewOrUpdated(scripts.clone()))
             .unwrap();
+
+        let mut self_scripts = self.scripts.lock().await;
+        let mut file_lookup = self.file_lookup.lock().await;
+        for script in scripts.into_iter() {
+            file_lookup.insert(script.file.clone(), script.get_key().unwrap());
+            self_scripts.insert(script.get_key().unwrap(), script);
+        }
     }
 
     pub async fn call(
@@ -208,75 +225,3 @@ impl<'a> std::fmt::Display for ScriptEngineError {
         }
     }
 }
-
-// #[derive(Debug, Default)]
-// struct ScriptStore {
-//     scripts: HashSet<u64>,
-//     callables: Vec<(u64, Arc<dyn Callable>)>,
-//     names: Vec<(u64, String)>,
-//     description: Vec<(u64, String)>,
-//     argument_type: Vec<(u64, Vec<ArgumentType>)>,
-//     argument_descriptions: Vec<(u64, Vec<String>)>,
-//     files: Vec<(u64, PathBuf)>,
-// }
-
-// impl ScriptStore {
-//     /// requires `ScriptStore::sync` after calling this function.
-//     /// store runs worst-case O(Log(n))
-//     pub fn store_new_scripts(&mut self, scripts: &[Script]) {
-//         for script in scripts {
-//             let key = script.get_key();
-//             if key.is_none() {
-//                 error!("could not generate key");
-//                 continue;
-//             }
-
-//             let key = key.unwrap();
-//             store(self.scripts, key.clone(), script.call_context);
-//             store(self.names, key.clone(), script.name);
-
-//             store(self.description, key.clone(), script.description.clone());
-//             store(
-//                 self.argument_type,
-//                 key.clone(),
-//                 script.argument_type.clone(),
-//             );
-//             store(
-//                 self.argument_descriptions,
-//                 key.clone(),
-//                 script.argument_descriptions.clone(),
-//             );
-//             store(files, key.clone(), script.file.to_path_buf());
-//         }
-//     }
-
-//     fn store<K, V>(vec: &mut Vec<(K, V)>, key: K, val: V) {
-//         if let Ok(index) = vec.binary_search_by_key(&key, |&(a, b)| b) {
-//             vec[index] = (key, val);
-//         } else {
-//             vec.push((key, val));
-//         }
-//     }
-
-//     async fn sync_vec<K, V>(vec: &mut Vec<(K, V)>, keys: &HashSet<u64>) {
-//         vec.sort_by_cached_key(|&(a, b)| b);
-//         //dedup and remove
-//         // verify doc, dedup on sorted list should be fast
-//         vec.dedup_by(|&(a, b)| {
-//             // todo: verify if the last element will be removed if its stale
-//             let remove = keys.contains(a.0);
-//             remove || a.0 == b.0
-//         });
-//     }
-
-//     pub fn sync(&mut self) {
-//         Runtime::block_on(vec![
-//             ScriptStore::sync_vec(&self.callables),
-//             ScriptStore::sync_vec(&self.names),
-//             ScriptStore::sync_vec(&self.description),
-//             ScriptStore::sync_vec(&self.argument_type),
-//             ScriptStore::sync_vec(&self.argument_descriptions),
-//             ScriptStore::sync_vec(&self.files),
-//         ]);
-//     }
-// }

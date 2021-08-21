@@ -1,8 +1,8 @@
 pub mod app_meta;
+pub mod file_watcher;
 pub mod logging;
 pub mod script_engine;
 pub mod settings;
-
 use std::path::PathBuf;
 
 use app_meta::*;
@@ -15,6 +15,7 @@ pub enum SettingKey {
     // path to the folder to watch. containing the actual scripts.
     ScriptsDir,
     FolderScan,
+    #[cfg(target_family = "unix")]
     LoadAliases,
 }
 
@@ -37,6 +38,7 @@ pub fn app_setting_defaults() -> Vec<KeyWithDefault<SettingKey>> {
         JsonValue::Boolean(true),
     ));
 
+    #[cfg(target_family = "unix")]
     dict.push((SettingKey::LoadAliases, "aliases", JsonValue::Boolean(true)));
 
     dict
@@ -57,26 +59,4 @@ pub fn load_settings() -> Settings<SettingKey> {
     let mut settings = settings::Settings::new(&app_setting_defaults());
     settings.load();
     settings
-}
-
-pub async fn load_core_components() -> ScriptEngine {
-    let engine = ScriptEngine::default();
-    let settings = load_settings();
-
-    // default load scripts-dir for now
-    if let Some(script_path) = settings.get_str(SettingKey::ScriptsDir) {
-        let path = PathBuf::from(script_path);
-        let fut = engine.load_path(&path);
-
-        if let Some(load_alias) = settings.get_bool(SettingKey::LoadAliases) {
-            if load_alias {
-                #[cfg(target_family = "unix")]
-                let _ = futures::join!(engine.load_aliases(), fut);
-            }
-        } else {
-            fut.await.unwrap();
-        }
-    }
-
-    engine
 }

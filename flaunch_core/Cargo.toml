@@ -12,6 +12,7 @@ futures="*"
 tokio = { version = "*", features = ["sync", "macros"] }
 tokio-stream= { version = "*", features = ["sync"] }
 regex = "*"
+notify= "*"
 
 [build-dependencies]
 git = { package = "git2", version= "*"}
