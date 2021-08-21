@@ -3,7 +3,7 @@ use std::{
     collections::HashMap,
 };
 
-use flaunch_core::logging::{error, info};
+use flaunch_core::logging::error;
 use once_cell::sync::OnceCell;
 use tokio::sync::mpsc;
 use tokio::sync::watch;
@@ -17,7 +17,6 @@ where
     T: 'static + std::fmt::Debug + Sync,
 {
     let f = async {
-        info!("komaan!");
         if let Some(mut receiver) = get_internal::<watch::Receiver<T>>().await {
             let future = async move {
                 loop {

@@ -7,6 +7,7 @@ use futures::stream::FuturesUnordered;
 use futures::FutureExt;
 use futures::StreamExt;
 pub use interpreter::Script;
+use log::info;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::path::Path;
@@ -24,11 +25,12 @@ use self::interpreter::ParseError;
 #[derive(Clone, PartialEq, Debug)]
 pub enum ArgumentType {
     Boolean(String),
-    Int(String),
-    Uint(String),
-    Float(String),
+    Int(i32),
+    Uint(u32),
+    Float(f32),
     String(String),
     List(String),
+    NotSpecified,
 }
 
 #[derive(Debug, Clone)]
@@ -84,7 +86,7 @@ impl ScriptEngine {
 
         let mut parse_fut = FuturesUnordered::new();
         for file in files {
-            info!("{}= loading {}", module_path!(), file.to_string_lossy());
+            info!("loading {}", file.to_string_lossy());
             let parse_task = interpreter::read_and_parse_file(file).fuse();
             parse_fut.push(parse_task);
         }

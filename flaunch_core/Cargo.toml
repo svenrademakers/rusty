@@ -11,6 +11,7 @@ app_dirs = { package = "app_dirs2", version = "*" }
 futures="*"
 tokio = { version = "*", features = ["sync", "macros"] }
 tokio-stream= { version = "*", features = ["sync"] }
+once_cell="*"
 
 [build-dependencies]
 git = { package = "git2", version= "*"}

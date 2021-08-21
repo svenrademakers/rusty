@@ -1,4 +1,5 @@
 use crate::script_engine::*;
+use once_cell::sync::OnceCell;
 use std::boxed::Box;
 use std::hash::Hasher;
 use std::{any::Any, collections::hash_map::DefaultHasher, hash::Hash};
@@ -20,8 +21,7 @@ pub struct Script {
     /// required field
     pub name: String,
     pub description: String,
-    pub argument_type: Vec<ArgumentType>,
-    pub argument_descriptions: Vec<String>,
+    pub arguments: Vec<(String, ArgumentType, String)>,
     pub file: PathBuf,
     pub interpreter_type: InterpreterType,
 }
@@ -32,8 +32,7 @@ impl Script {
         Script {
             name: name,
             description: String::default(),
-            argument_type: Vec::new(),
-            argument_descriptions: Vec::new(),
+            arguments: Vec::new(),
             file: PathBuf::new(),
             interpreter_type: interpreter_type,
         }
@@ -102,11 +101,11 @@ pub fn select_interpreter_for_file(
     let file_ext = file.extension().unwrap().to_str().unwrap();
 
     match file_ext {
-        "py" => Ok(&PYINTERPRETER),
+        "py" => Ok(PYINTERPRETER.get_or_init(|| PyInterpreter::default())),
         _ => Err(ScriptEngineError::InterpreterNotAvailable(
             file.extension().unwrap().to_os_string(),
         )),
     }
 }
 
-static PYINTERPRETER: PyInterpreter = PyInterpreter {};
+static PYINTERPRETER: OnceCell<PyInterpreter> = OnceCell::new();

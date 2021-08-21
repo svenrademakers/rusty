@@ -53,11 +53,7 @@ where
 
     pub fn load(&mut self) {
         let settings_file = master_settings();
-        debug!(
-            "{}= master_settings file = {}",
-            module_path!(),
-            settings_file.to_string_lossy()
-        );
+        debug!("master_settings {}", settings_file.to_string_lossy());
         if settings_file.exists() {
             self.from_json(&settings_file.to_string_lossy().to_string());
         }
