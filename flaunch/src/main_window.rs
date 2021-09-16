@@ -67,8 +67,6 @@ pub mod imp {
             obj.set_titlebar(Some(&titlebar));
 
             obj.set_default_size(800, 600);
-            obj.add(&self.script_listbox);
-            obj.show_all();
 
             let wind = self.instance();
             watch(move |change| {
@@ -81,6 +79,24 @@ pub mod imp {
                 priv_.script_listbox.show_all();
                 true
             });
+
+            let menu_refresh = gtk::MenuItem::with_label("Refresh");
+            let menu_settings = gtk::MenuItem::with_label("Settings");
+            menu_settings.connect_activate(move |_| {
+                // let path = format!("file://{}", master_settings().to_string_lossy().to_string());
+                // system_uri::open(path).unwrap();
+            });
+
+            let menu = gtk::MenuBar::new();
+            menu.add(&menu_refresh);
+            menu.add(&menu_settings);
+
+            let v_box = gtk::Box::new(gtk::Orientation::Vertical, 0);
+            v_box.add(&menu);
+            v_box.add(&self.script_listbox);
+
+            obj.add(&v_box);
+            obj.show_all();
         }
     }
 
