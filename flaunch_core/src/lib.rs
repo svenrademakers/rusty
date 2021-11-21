@@ -6,6 +6,7 @@ pub mod settings;
 use std::path::PathBuf;
 
 use app_meta::*;
+use log::info;
 use logging::*;
 use script_engine::ScriptEngine;
 use settings::*;
@@ -54,16 +55,4 @@ pub fn load_settings() -> Settings<SettingKey> {
     let mut settings = settings::Settings::new(&app_setting_defaults());
     settings.load();
     settings
-}
-
-pub async fn load_core_components() -> ScriptEngine {
-    let mut engine = ScriptEngine::default();
-    let settings = load_settings();
-
-    // default load scripts-dir for now
-    if let Some(script_path) = settings.get_str(SettingKey::ScriptsDir) {
-        let path = PathBuf::from(script_path);
-        engine.load(&path).await.unwrap();
-    }
-    engine
 }

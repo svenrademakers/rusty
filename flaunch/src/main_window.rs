@@ -69,15 +69,31 @@ pub mod imp {
 
     fn on_new_script(vec: &Vec<Script>, wind: &super::MainWindow) {
         for ch in vec {
-            let btn = gtk::Button::with_label(ch.name.as_str());
-            let key = ch.get_key().unwrap();
-            btn.connect_clicked(move |_| {
-                control(ScriptEngineCmd::Call(key));
-            });
-
             let priv_ = MainWindow::from_instance(wind);
-            priv_.script_listbox.add(&btn);
+            priv_.script_listbox.add(&script_list_item(ch));
         }
+    }
+
+    fn script_list_item(script: &Script) -> gtk::Widget {
+        let hbox = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+
+        hbox.add(&gtk::Button::with_label(">"));
+        let btn = gtk::Button::with_label(script.name.as_str());
+        let key = script.get_key().unwrap();
+        btn.connect_clicked(move |_| {
+            control(ScriptEngineCmd::Call(key));
+        });
+        let vbox = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        hbox.add(&btn);
+
+        let mut args = String::new();
+        for (name, typ, desc) in &script.arguments {
+            args = format!("{} {}: {}", args, name, typ);
+        }
+        hbox.add(&gtk::Label::new(args.as_str().into()));
+        hbox.set_tooltip_text(script.description.as_str().into());
+        vbox.add(&hbox);
+        return vbox.upcast::<gtk::Widget>();
     }
 
     impl WidgetImpl for MainWindow {}

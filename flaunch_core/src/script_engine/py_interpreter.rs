@@ -1,18 +1,41 @@
 extern crate pyo3;
 
+use std::any::TypeId;
 use std::collections::HashMap;
-use std::{any::TypeId, ffi::OsStr};
 
 use crate::script_engine::interpreter::*;
 use crate::script_engine::*;
 
+use log::info;
+
+use pyo3::types::*;
 pub use pyo3::{
     prelude::*,
     types::{PyModule, PyTuple},
 };
 
-#[derive(Debug, Default)]
-pub struct PyInterpreter {}
+#[derive(Debug)]
+pub struct PyInterpreter {
+    annotation_mod: Py<PyModule>,
+}
+
+impl Default for PyInterpreter {
+    fn default() -> Self {
+        let gil = Python::acquire_gil();
+        let py = gil.python();
+        info!("python version = {}", py.version());
+        let module = PyModule::from_code(
+            py,
+            &include_str!("py_annotation.py"),
+            "py_annotation.py",
+            "py_annotation",
+        )
+        .unwrap();
+        PyInterpreter {
+            annotation_mod: module.into_py(gil.python()),
+        }
+    }
+}
 
 impl Interpreter for PyInterpreter {
     fn parse(&self, content: &[u8], file: &Path) -> ParseResult {
@@ -20,41 +43,83 @@ impl Interpreter for PyInterpreter {
         let mut callables: Vec<(u64, Arc<dyn Callable>)> = Vec::new();
         let mut errors = Vec::new();
 
-        let filename = file.to_string_lossy().to_string();
-        let module_name: &str = file.file_stem().and_then(OsStr::to_str).unwrap();
         let as_str = std::str::from_utf8(content).unwrap();
 
         let gil = Python::acquire_gil();
         let py = gil.python();
-        let module = PyModule::from_code(py, &as_str, &filename, &module_name);
-        if let Err(e) = module {
+
+        let globals = pyo3::types::PyDict::new(py);
+        if let Err(e) = Python::run(py, as_str, None, Some(globals)) {
             let error_tuple: ParseError = ParseError {
-                filename: filename,
+                filename: file.to_string_lossy().to_string(),
                 message: e.pvalue(py).to_string(),
                 traceback: e.ptraceback(py).to_object(py).to_string(),
             };
             errors.push(error_tuple);
-        } else if let Ok(m) = module {
-            let mut py_call = PyCallable::default();
-
-            for obj in m.dict().keys() {
-                let name = obj.str().unwrap().to_str().unwrap().to_string();
-                let obj = m.get(&name).unwrap();
-
-                if obj.is_callable() {
-                    let script = create_script_obj(obj, file, name);
-                    let key = script.get_key().unwrap();
-                    py_call.insert(key, obj.into_py(py));
-                    scripts.push(script);
+            info!("err {:?}", errors);
+        } else {
+            if let Some(func_call) = globals.get_item("flaunch_callables") {
+                let mut py_call = PyCallable::default();
+                for (key, value) in func_call.downcast::<PyDict>().unwrap() {
+                    let descriptions = value.downcast::<PyDict>().unwrap();
+                    if let Ok(func) = key.downcast::<PyFunction>() {
+                        if let Ok(name) = func.getattr("__name__") {
+                            let script = create_script_object(name, file, func, descriptions);
+                            py_call.insert(script.get_key().unwrap(), func.to_object(py));
+                            scripts.push(script);
+                        }
+                    }
                 }
+                let keys = py_call.keys();
+                let rc: Arc<dyn Callable> = Arc::new(py_call);
+                callables = keys.iter().map(|key| (key.clone(), rc.clone())).collect();
             }
-            let keys = py_call.keys();
-            let rc: Arc<dyn Callable> = Arc::new(py_call);
-            callables = keys.iter().map(|key| (key.clone(), rc.clone())).collect();
         }
 
         (scripts, callables, errors)
     }
+}
+
+fn create_script_object(
+    name: &PyAny,
+    file: &Path,
+    func: &PyFunction,
+    descriptions: &PyDict,
+) -> Script {
+    let mut script = Script::new(name.to_string(), InterpreterType::Python);
+    script.file = file.to_path_buf();
+    let annotations = func
+        .getattr("__annotations__")
+        .unwrap()
+        .downcast::<PyDict>()
+        .unwrap();
+    for (key, value) in annotations.iter() {
+        let mut description = String::new();
+        if let Some(des) = descriptions.get_item(key) {
+            description = des.to_string().trim().to_string();
+        }
+        script
+            .arguments
+            .push((key.to_string(), get_flaunch_type(value), description));
+    }
+    if func.hasattr("__doc__").unwrap() {
+        let doc = func.getattr("__doc__").unwrap().to_string();
+        if doc != "None" {
+            script.description = doc.trim().to_string();
+        }
+    }
+    script
+}
+
+fn get_flaunch_type(any: &PyAny) -> ArgumentType {
+    if let Ok(typ) = any.downcast::<PyType>() {
+        return match typ.name() {
+            Ok("str") => ArgumentType::String("".to_string()),
+            Ok("int") => ArgumentType::Int(0),
+            _ => ArgumentType::NotSpecified,
+        };
+    }
+    ArgumentType::NotSpecified
 }
 
 #[derive(Default, Debug)]
@@ -99,35 +164,6 @@ impl Callable for PyCallable {
     }
 }
 
-fn get_arguments(py_any: &PyAny) -> Vec<ArgumentType> {
-    let mut args = Vec::new();
-    for var_name in py_any.getattr("__code__").unwrap().getattr("co_varnames") {
-        let argument_tuple = var_name.downcast::<PyTuple>().unwrap();
-        if !argument_tuple.is_empty() {
-            let name = argument_tuple.get_item(0).to_string();
-            args.push(ArgumentType::String(name));
-        }
-    }
-
-    args
-}
-
-fn create_script_obj(obj: &PyAny, file: &Path, name: String) -> Script {
-    let mut script = Script::new(name, InterpreterType::Python);
-    let arguments = get_arguments(&obj);
-    if !arguments.is_empty() {
-        script.argument_type = arguments;
-    }
-    script.file = file.to_path_buf();
-    if obj.hasattr("__doc__").unwrap() {
-        let doc = obj.getattr("__doc__").unwrap().to_string();
-        if doc != "None" {
-            script.description = doc;
-        }
-    }
-    script
-}
-
 unsafe impl Send for PyInterpreter {}
 unsafe impl Sync for PyInterpreter {}
 
@@ -153,6 +189,7 @@ mod tests {
         let py_interpreter = PyInterpreter::default();
         let (scripts, callables, errors) = py_interpreter.parse(
             concat!(
+                "@flaunch(wat=\"Print Statement\", number=\"Given Number\")",
                 "def test_123(wat):\n\t\"\"\"this is a test",
                 " doc\"\"\"\n\tprint(\"hoi\")\n",
                 "def test_2():\n\tprint(\"test2\")\n"

@@ -1,9 +1,10 @@
+use std::path::PathBuf;
+
 use crate::application_controllers::register_sender_receiver;
 use crate::main_window::MainWindow;
 use crate::system_tray::run_system_tray_thread;
-use flaunch_core::logging::info;
 use flaunch_core::script_engine::ScriptEngine;
-use flaunch_core::{app_meta, load_core_components};
+use flaunch_core::{app_meta, load_settings, SettingKey};
 use futures::executor::block_on;
 use gtk::gio;
 use gtk::gio::ApplicationFlags;
@@ -66,16 +67,24 @@ impl ApplicationImpl for FlaunchApp {
         run_system_tray_thread();
 
         let self_ = self.instance();
-        let engine = block_on(load_core_components());
+        let engine = ScriptEngine::default();
         register_sender_receiver(engine.observe());
 
         let (script_send, script_recv) = tokio::sync::mpsc::channel(64);
-        register_sender_receiver(script_send);
+        register_sender_receiver(script_send.clone());
         run_logic_thread(engine, script_recv);
 
         let window = MainWindow::new(&self_);
         let priv_ = FlaunchApp::from_instance(&self_);
         priv_.window.set(window).unwrap();
+
+        let settings = load_settings();
+
+        // default load scripts-dir for now
+        if let Some(script_path) = settings.get_str(SettingKey::ScriptsDir) {
+            let path = PathBuf::from(script_path);
+            block_on(script_send.send(ScriptEngineCmd::Load(path))).unwrap();
+        }
     }
 }
 
@@ -83,31 +92,40 @@ impl GtkApplicationImpl for FlaunchApp {}
 
 pub enum ScriptEngineCmd {
     Call(u64),
+    Load(PathBuf),
+}
+
+pub enum MainViewCmd {
+    OpenSettings,
 }
 
 impl std::fmt::Debug for ScriptEngineCmd {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ScriptEngineCmd::Call(x) => write!(f, "Call({})", x),
+            ScriptEngineCmd::Load(pa) => write!(f, "Load({})", pa.to_string_lossy()),
         }
     }
 }
 
-pub fn run_logic_thread(engine: ScriptEngine, mut script_cmd: Receiver<ScriptEngineCmd>) {
+pub fn run_logic_thread(mut engine: ScriptEngine, mut script_cmd: Receiver<ScriptEngineCmd>) {
     std::thread::spawn(move || {
         futures::executor::block_on(async {
             loop {
                 let cmd = script_cmd.recv().await.unwrap();
-                process_cmd(&engine, cmd);
+                process_cmd(&mut engine, cmd).await;
             }
         })
     });
 }
 
-fn process_cmd(engine: &ScriptEngine, cmd: ScriptEngineCmd) {
+async fn process_cmd(engine: &mut ScriptEngine, cmd: ScriptEngineCmd) {
     match cmd {
         ScriptEngineCmd::Call(key) => {
             let _res = engine.call(key, &Vec::new()).unwrap();
+        }
+        ScriptEngineCmd::Load(path) => {
+            let _ = engine.load(&path).await.unwrap();
         }
     }
 }
