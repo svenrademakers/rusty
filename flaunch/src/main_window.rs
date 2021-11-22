@@ -1,6 +1,10 @@
-use gtk::glib;
+use glib::{subclass::types::ObjectSubclassExt, Cast};
+use gtk::{gio, glib};
 
-use crate::application::{self};
+use crate::{
+    application::{self},
+    system_tray::win,
+};
 
 glib::wrapper! {
     pub struct MainWindow(ObjectSubclass<imp::MainWindow>)
@@ -8,23 +12,36 @@ glib::wrapper! {
 }
 
 impl MainWindow {
-    pub fn new(app: &application::Application) -> Self {
-        glib::Object::new(&[("application", app)]).expect("Failed to create MainWindow")
+    pub fn new(app: &application::Application, resources: gio::Resource) -> Self {
+        let window =
+            glib::Object::new(&[("application", app)]).expect("Failed to create MainWindow");
+        let w = imp::MainWindow::from_instance(&window);
+        w.init(resources);
+        window
     }
 }
 
 pub mod imp {
+    use std::cell::RefCell;
+
     use crate::application::ScriptEngineCmd;
-    use crate::application_controllers::{self, control, watch};
+    use crate::application_controllers::{control, watch};
     use flaunch_core::app_meta;
     use flaunch_core::script_engine::{Script, ScriptChange};
-    use gtk::glib;
     use gtk::prelude::*;
     use gtk::subclass::prelude::*;
+    use gtk::{gio, glib};
 
     #[derive(Debug, Default)]
     pub struct MainWindow {
         script_listbox: gtk::ListBox,
+        resource: RefCell<Option<gio::Resource>>,
+    }
+
+    impl MainWindow {
+        pub fn init(&self, resource: gio::Resource) {
+            *self.resource.borrow_mut() = Some(resource);
+        }
     }
 
     #[glib::object_subclass]
@@ -75,8 +92,8 @@ pub mod imp {
     }
 
     fn script_list_item(script: &Script) -> gtk::Widget {
-        let hbox = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-
+        let hbox = gtk::Box::new(gtk::Orientation::Horizontal, 5);
+        // let image = gtk::Image::n
         hbox.add(&gtk::Button::with_label(">"));
         let btn = gtk::Button::with_label(script.name.as_str());
         let key = script.get_key().unwrap();

@@ -11,8 +11,8 @@ use gtk::gio::ApplicationFlags;
 use gtk::glib;
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
+use once_cell::unsync::Lazy;
 use once_cell::unsync::OnceCell;
-use tokio::select;
 use tokio::sync::mpsc::Receiver;
 
 glib::wrapper! {
@@ -74,7 +74,11 @@ impl ApplicationImpl for FlaunchApp {
         register_sender_receiver(script_send.clone());
         run_logic_thread(engine, script_recv);
 
-        let window = MainWindow::new(&self_);
+        let res_bytes = include_bytes!("../resources/app.gresource");
+        let data = glib::Bytes::from(&res_bytes[..]);
+        let resource = gio::Resource::from_data(&data).unwrap();
+
+        let window = MainWindow::new(&self_, resource);
         let priv_ = FlaunchApp::from_instance(&self_);
         priv_.window.set(window).unwrap();
 
