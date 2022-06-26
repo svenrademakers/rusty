@@ -17,6 +17,7 @@ use std::{any::Any, boxed::Box, ffi::OsString, fs::DirEntry};
 use tokio::sync::watch;
 use tokio::sync::watch::Receiver;
 use tokio::sync::watch::Sender;
+use tokio::sync::RwLock;
 
 use std::{path::PathBuf, vec::Vec};
 
@@ -55,21 +56,12 @@ pub enum ScriptChange {
 }
 
 #[derive(Debug)]
-pub enum ScriptController {
-    Load(PathBuf),
-    Call(u64, Vec<Box<dyn Any>>),
-}
-
-unsafe impl Send for ScriptChange {}
-unsafe impl Send for ScriptController {}
-
-#[derive(Debug)]
 pub struct ScriptEngine {
     script_sender: Sender<ScriptChange>,
     script_receiver: Receiver<ScriptChange>,
-    call_map: HashMap<u64, Arc<dyn Callable>>,
+    call_map: RwLock<HashMap<u64, Arc<dyn Callable>>>,
+    scripts: RwLock<HashMap<u64, Script>>,
 }
-unsafe impl Send for ScriptEngine {}
 
 impl Default for ScriptEngine {
     fn default() -> Self {
@@ -78,7 +70,8 @@ impl Default for ScriptEngine {
         ScriptEngine {
             script_sender: s,
             script_receiver: r,
-            call_map: HashMap::new(),
+            call_map: RwLock::new(HashMap::new()),
+            scripts: RwLock::new(HashMap::new()),
         }
     }
 }
@@ -88,10 +81,7 @@ impl ScriptEngine {
         self.script_receiver.clone()
     }
 
-    pub async fn load(
-        &mut self,
-        scripts_path: &Path,
-    ) -> Result<Vec<ParseError>, ScriptEngineError> {
+    pub async fn load(&self, scripts_path: &Path) -> Result<Vec<ParseError>, ScriptEngineError> {
         let files = get_files_of_dir(scripts_path)?;
         if files.is_empty() {
             return Err(ScriptEngineError::NoScriptsFound(
@@ -113,7 +103,7 @@ impl ScriptEngine {
                 parse_res = parse_fut.select_next_some() => {
                     let (scripts, callables, err) = parse_res;
                     errors.extend(err);
-                    self.insert_callables(callables);
+                    self.insert_callables(callables).await;
                     self.process_new_scripts(scripts);
                 }
                 complete => break,
@@ -123,20 +113,26 @@ impl ScriptEngine {
         Ok(errors)
     }
 
-    fn insert_callables(&mut self, callables: Vec<(u64, Arc<dyn Callable>)>) {
-        for call in callables {
-            self.call_map.insert(call.0, call.1);
-        }
+    pub async fn scripts(&self) -> Vec<Script> {
+        self.scripts.read().await.clone().into_values().collect()
     }
 
-    fn process_new_scripts(&mut self, scripts: Vec<Script>) {
+    async fn insert_callables(&self, callables: Vec<(u64, Arc<dyn Callable>)>) {
+        self.call_map.write().await.extend(callables.into_iter())
+    }
+
+    fn process_new_scripts(&self, scripts: Vec<Script>) {
         self.script_sender
             .send(ScriptChange::NewOrUpdated(scripts))
             .unwrap();
     }
 
-    pub fn call(&self, script_key: u64, args: &[Box<dyn Any>]) -> Result<bool, ScriptEngineError> {
-        if let Some(c) = self.call_map.get(&script_key) {
+    pub async fn call(
+        &self,
+        script_key: u64,
+        args: &[Box<dyn Any>],
+    ) -> Result<bool, ScriptEngineError> {
+        if let Some(c) = self.call_map.read().await.get(&script_key) {
             info!("{}= Calling script:{}", module_path!(), script_key);
             self.return_on_invalid_arguments(&script_key, args.len())?;
             c.call(script_key, args).unwrap();

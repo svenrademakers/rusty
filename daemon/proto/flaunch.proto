@@ -1,0 +1,36 @@
+syntax = "proto3";
+import "google/protobuf/empty.proto";
+
+package flaunch;
+
+service ScriptEngine {
+    rpc GetAll (google.protobuf.Empty) returns (stream Script);
+}
+
+message Script {
+   string name = 1;
+   string description = 2;
+   repeated ScriptArgument arguments = 3;
+   string file = 4;
+   Interpreter interpreter = 5;
+}
+
+message ScriptArgument {
+    string name = 1;
+    ArgumentType argument_type = 2;
+    string default = 3;
+}
+
+enum ArgumentType {
+    NOTSPECIFIED = 0;
+    BOOLEAN = 1;
+    INTEGER = 2;
+    UINTEGER = 3;
+    FLOAT = 4;
+    STRING = 5;
+    LIST = 6;
+}
+
+enum Interpreter {
+    Python = 0;
+}

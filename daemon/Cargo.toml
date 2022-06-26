@@ -1,0 +1,16 @@
+[package]
+name = "flaunchd"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+tonic = "*"
+prost = "*"
+tokio = { version = "*", features = ["macros", "rt-multi-thread"] }
+flaunch_core = { path= "../flaunch_core" }
+tokio-stream = "*"
+
+[build-dependencies]
+tonic-build = "*"

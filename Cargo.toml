@@ -3,8 +3,5 @@
 members = [
     "flaunch_core",
     "flaunch_cli",
-    "flaunch",
+    "daemon",
 ]
-
-[profile.dev]
-opt-level = 3

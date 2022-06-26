@@ -10,7 +10,7 @@ pub enum InterpreterType {
     Python,
 }
 
-pub trait Callable: Debug {
+pub trait Callable: Debug + Send + Sync {
     fn call(&self, key: u64, args: &[Box<dyn Any>]) -> Result<(), CallError>;
 }
 

@@ -3,12 +3,10 @@ pub mod logging;
 pub mod script_engine;
 pub mod settings;
 
-use std::path::PathBuf;
 
 use app_meta::*;
 use log::info;
 use logging::*;
-use script_engine::ScriptEngine;
 use settings::*;
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
@@ -23,6 +21,7 @@ pub fn app_setting_defaults() -> Vec<KeyWithDefault<SettingKey>> {
 
     // default scripts dir
     let mut scripts_dir = std::env::current_dir().unwrap_or_default();
+    scripts_dir.push("..");
     scripts_dir.push("test_scripts");
     dict.push((
         SettingKey::ScriptsDir,
